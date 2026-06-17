@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-50: #F8FCFC;
+  --color-primary-100: #EAF7F5;
+  --color-primary-500: #A8DADC;
+  --color-primary-600: #7FD8BE;
+  --color-primary-700: #4A6FA5;
+
+  --color-blue-50: #F0FAF8;
+  --color-blue-100: #DDF3F0;
+  --color-blue-200: #CDEFEA;
+  --color-blue-300: #A8DADC;
+  --color-blue-400: #7FD8BE;
+  --color-blue-500: #67CDB3;
+  --color-blue-600: #5BAE9F;
+  --color-blue-700: #4A6FA5;
+  --color-blue-800: #3E638F;
+  --color-blue-900: #365471;
+  --color-blue-950: #2D3748;
+
+  --color-cyan-50: #F0FAF8;
+  --color-cyan-100: #DDF3F0;
+  --color-cyan-200: #CDEFEA;
+  --color-cyan-300: #A8DADC;
+  --color-cyan-400: #7FD8BE;
+  --color-cyan-500: #67CDB3;
+  --color-cyan-600: #5BAE9F;
+  --color-cyan-700: #4A6FA5;
+  --color-cyan-800: #3E638F;
+  --color-cyan-900: #365471;
+
+  --color-sky-50: #F8FCFC;
+  --color-sky-100: #EAF7F5;
+  --color-sky-200: #D7F1EC;
+  --color-sky-300: #A8DADC;
+  --color-sky-400: #7FD8BE;
+  --color-sky-500: #67CDB3;
+  --color-sky-600: #5BAE9F;
+  --color-sky-700: #4A6FA5;
+  --color-sky-800: #3E638F;
+  --color-sky-900: #365471;
+
+  --color-indigo-50: #F4FBFA;
+  --color-indigo-100: #E7F6F4;
+  --color-indigo-200: #CDEFEA;
+  --color-indigo-300: #A8DADC;
+  --color-indigo-400: #7FD8BE;
+  --color-indigo-500: #67CDB3;
+  --color-indigo-600: #5BAE9F;
+  --color-indigo-700: #4A6FA5;
+  --color-indigo-800: #3E638F;
+  --color-indigo-900: #365471;
+
+  --color-emerald-50: #F0FAF8;
+  --color-emerald-100: #DDF3F0;
+  --color-emerald-200: #CDEFEA;
+  --color-emerald-300: #A8DADC;
+  --color-emerald-400: #7FD8BE;
+  --color-emerald-500: #67CDB3;
+  --color-emerald-600: #5BAE9F;
+  --color-emerald-700: #3F8F7F;
+  --color-emerald-800: #347569;
+
+  --color-rose-50: #FFF3F6;
+  --color-rose-100: #FFE5EC;
+  --color-rose-200: #FFD2DE;
+  --color-rose-400: #F4A9BB;
+  --color-rose-600: #D77892;
+  --color-rose-700: #A95770;
+  --color-rose-800: #8C465D;
+
+  --color-slate-50: #F8FCFC;
+  --color-slate-100: #EDF6F5;
+  --color-slate-200: #DDEAE8;
+  --color-slate-300: #C9D9D7;
+  --color-slate-400: #9BAEAC;
+  --color-slate-500: #718096;
+  --color-slate-600: #5F6F82;
+  --color-slate-700: #4A5568;
+  --color-slate-800: #2D3748;
+  --color-slate-900: #243142;
+  --color-slate-950: #1E2936;
+
+  --shadow-sm: 0 1px 2px rgba(45, 55, 72, 0.05);
+  --shadow-md: 0 10px 24px rgba(45, 55, 72, 0.07);
+  --shadow-lg: 0 16px 36px rgba(45, 55, 72, 0.09);
+  --shadow-xl: 0 20px 50px rgba(45, 55, 72, 0.10);
+  --shadow-2xl: 0 28px 70px rgba(45, 55, 72, 0.12);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-sky-50 text-slate-800 antialiased font-sans;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: 0;
+  }
+
+  ::selection {
+    background: #CDEFEA;
+    color: #2D3748;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+}
+
+@utility glassmorphism {
+  @apply bg-white/80 backdrop-blur-md border border-white/70 shadow-lg;
+}

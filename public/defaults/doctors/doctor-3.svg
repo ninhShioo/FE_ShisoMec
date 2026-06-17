@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Dentist portrait">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F8FCFC"/>
+      <stop offset="1" stop-color="#FFE5EC"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="480" rx="36" fill="url(#bg)"/>
+  <circle cx="240" cy="160" r="78" fill="#EAB9A8"/>
+  <path d="M154 174c-2-72 45-120 106-116 52 3 84 42 84 98-58-30-114 20-190 18Z" fill="#2D3748"/>
+  <path d="M120 410c19-88 75-138 120-138s101 50 120 138" fill="#FFFFFF"/>
+  <rect x="198" y="286" width="84" height="96" rx="28" fill="#CDEFEA"/>
+  <path d="M174 318c38 22 74 22 112 0" stroke="#4A6FA5" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="210" cy="168" r="7" fill="#2D3748"/>
+  <circle cx="280" cy="168" r="7" fill="#2D3748"/>
+  <path d="M218 200c20 14 44 14 64 0" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+</svg>

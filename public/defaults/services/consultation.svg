@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-label="Dental consultation">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F8FCFC"/>
+      <stop offset="0.55" stop-color="#CDEFEA"/>
+      <stop offset="1" stop-color="#FFF8F0"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#2D3748" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+  <rect width="640" height="420" rx="28" fill="url(#bg)"/>
+  <rect x="64" y="70" width="268" height="260" rx="24" fill="#FFFFFF" opacity="0.92" filter="url(#soft)"/>
+  <rect x="372" y="92" width="116" height="170" rx="50" fill="#FFFFFF" opacity="0.96" filter="url(#soft)"/>
+  <path d="M427 116c31 0 58 20 58 54 0 36-26 58-58 58s-58-22-58-58c0-34 27-54 58-54Z" fill="#A8DADC"/>
+  <path d="M396 166h62M427 135v72" stroke="#4A6FA5" stroke-width="14" stroke-linecap="round"/>
+  <rect x="94" y="112" width="202" height="22" rx="11" fill="#4A6FA5" opacity="0.86"/>
+  <rect x="94" y="158" width="168" height="16" rx="8" fill="#718096" opacity="0.38"/>
+  <rect x="94" y="194" width="214" height="16" rx="8" fill="#718096" opacity="0.28"/>
+  <rect x="94" y="238" width="116" height="46" rx="23" fill="#7FD8BE"/>
+  <circle cx="524" cy="288" r="54" fill="#FFE5EC"/>
+  <path d="M506 282c10-22 38-22 48 0 11 25-13 49-24 66-11-17-35-41-24-66Z" fill="#FFFFFF"/>
+</svg>

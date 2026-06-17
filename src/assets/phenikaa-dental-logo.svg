@@ -1,0 +1,20 @@
+<svg width="430" height="118" viewBox="0 0 430 118" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Phenikaa Dental</title>
+  <desc id="desc">Blue dental logo with tooth icon and Phenikaa Dental text</desc>
+  <defs>
+    <linearGradient id="toothGradient" x1="16" y1="12" x2="111" y2="105" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#003DA6"/>
+      <stop offset="0.58" stop-color="#006FD6"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+    <linearGradient id="dentalGradient" x1="168" y1="82" x2="360" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#008BE8"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+  <path d="M28.9 24.4C39.2 10.8 58 12.7 73.6 24.2C83.4 31.4 95.2 31.4 106.6 24.8C99.2 39.2 83.9 43.3 67.4 37.9C52.4 33 41.4 34.4 34.1 43.3C25.4 54 25.7 69.2 38.4 87.7C30.5 82.9 23.9 74.7 20 64C15 50.1 18.1 38.7 28.9 24.4Z" fill="url(#toothGradient)"/>
+  <path d="M108.6 31.6C121.6 43.5 124 64.5 115 84.2C116.2 65.3 108.9 53.5 94.9 49.4C79.2 44.9 59.9 53.9 43.6 83.6C49.6 57.5 65.8 39.8 88.1 33.2C95.9 30.9 102.7 30.6 108.6 31.6Z" fill="url(#toothGradient)"/>
+  <path d="M42.2 86.7C52.5 79.2 61.5 81.7 67.8 92.5C72.1 99.9 73.5 106.8 73 114C65.4 101.8 58.2 98.3 52.1 104.1C48 108 43.2 109 38.5 106.2C32.2 102.3 29.5 94.2 29.8 82.8C33.9 89.5 37.8 90.8 42.2 86.7Z" fill="url(#toothGradient)"/>
+  <text x="150" y="54" fill="#07205F" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="800" letter-spacing="1.5">PHENIKAA</text>
+  <text x="151" y="94" fill="url(#dentalGradient)" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="500" letter-spacing="14">DENTAL</text>
+</svg>

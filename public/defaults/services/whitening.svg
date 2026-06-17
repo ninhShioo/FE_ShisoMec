@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-label="Teeth whitening">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.7" stop-color="#EAF7F5"/>
+      <stop offset="1" stop-color="#FFE5EC"/>
+    </linearGradient>
+    <filter id="soft"><feDropShadow dx="0" dy="20" stdDeviation="20" flood-color="#2D3748" flood-opacity="0.1"/></filter>
+  </defs>
+  <rect width="640" height="420" rx="28" fill="url(#bg)"/>
+  <path d="M244 108c36-34 92-34 128 0 33 31 38 83 14 132l-48 97c-11 22-42 19-49-5l-16-59c-3-13-21-13-24 0l-16 59c-7 24-38 27-49 5l-48-97c-24-49-19-101 14-132Z" fill="#FFFFFF" filter="url(#soft)"/>
+  <path d="M430 74l18 42 42 18-42 18-18 42-18-42-42-18 42-18 18-42Z" fill="#7FD8BE"/>
+  <path d="M512 202l12 28 28 12-28 12-12 28-12-28-28-12 28-12 12-28Z" fill="#A8DADC"/>
+  <path d="M202 184c42 20 98 20 140 0" stroke="#CDEFEA" stroke-width="12" stroke-linecap="round"/>
+</svg>

@@ -8,19 +8,6 @@ const todayValue = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
 
-const statusMap = {
-    pending: ['Chờ xác nhận', 'bg-amber-50 text-amber-700'],
-    confirmed: ['Đã xác nhận', 'bg-blue-50 text-blue-700'],
-    completed: ['Hoàn thành', 'bg-emerald-50 text-emerald-700'],
-    cancelled: ['Đã hủy', 'bg-rose-50 text-rose-700']
-};
-
-const statusSteps = [
-    ['pending', 'Chờ xác nhận'],
-    ['confirmed', 'Đã xác nhận'],
-    ['completed', 'Hoàn thành']
-];
-
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`;
 
 const workflowStatusSteps = [
@@ -86,7 +73,12 @@ export default function AppointmentsTab() {
         try {
             setLoading(true);
             const resAppt = await api.get('/appointments');
-            setAppointments(resAppt.data.data || []);
+            const nextAppointments = resAppt.data.data || [];
+            setAppointments(nextAppointments);
+            setDetailAppt(current => {
+                if (!current) return current;
+                return nextAppointments.find(appointment => appointment.id === current.id) || current;
+            });
 
             if (isFrontDesk) {
                 const [resDentists, resPatients, resServices] = await Promise.all([
@@ -125,6 +117,18 @@ export default function AppointmentsTab() {
 
     const resetCreateForm = () => {
         setCreateForm({ patientId: '', dentistId: '', appointmentDate: '', appointmentTime: '', notes: '', serviceIds: [] });
+    };
+
+    const patchAppointmentState = (appointmentId, changes) => {
+        setAppointments(current => current.map(appointment => (
+            appointment.id === appointmentId ? { ...appointment, ...changes } : appointment
+        )));
+        setDetailAppt(current => (
+            current?.id === appointmentId ? { ...current, ...changes } : current
+        ));
+        setSelectedAppt(current => (
+            current?.id === appointmentId ? { ...current, ...changes } : current
+        ));
     };
 
     const handleCreateAppointment = async (event) => {
@@ -200,7 +204,8 @@ export default function AppointmentsTab() {
         try {
             await api.put(`/appointments/${id}/status`, { status });
             toast.success('Đã cập nhật lịch hẹn.');
-            fetchData();
+            patchAppointmentState(Number(id), { status });
+            await fetchData();
         } catch (err) {
             toast.error(err.response?.data?.message || 'Không thể cập nhật lịch hẹn.');
         }
@@ -216,7 +221,12 @@ export default function AppointmentsTab() {
         try {
             await api.put(`/appointments/${appointment.id}/status`, { status, reason, note: reason });
             toast.success('Đã cập nhật trạng thái lịch hẹn.');
-            fetchData();
+            patchAppointmentState(appointment.id, {
+                status,
+                statusNote: reason || appointment.statusNote,
+                cancellationReason: status === 'cancelled' ? reason : appointment.cancellationReason
+            });
+            await fetchData();
         } catch (err) {
             toast.error(err.response?.data?.message || 'Không thể cập nhật lịch hẹn.');
         }
@@ -308,6 +318,7 @@ export default function AppointmentsTab() {
     const description = isDentist
         ? 'Danh sách khách hàng đã được phân công cho bạn.'
         : 'Theo dõi lịch chờ xác nhận, phân công bác sĩ và xuất hóa đơn sau khi hoàn thành.';
+    const appointmentTableColumns = isFrontDesk ? 7 : 6;
 
     return (
         <Panel>
@@ -415,7 +426,7 @@ export default function AppointmentsTab() {
                     </thead>
                     <tbody className="divide-y divide-blue-50">
                         {appointments.length === 0 ? (
-                            <tr><td colSpan="7" className="px-6 py-10 text-center text-sm font-semibold text-slate-500">Chưa có lịch hẹn.</td></tr>
+                            <tr><td colSpan={appointmentTableColumns} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">Chưa có lịch hẹn.</td></tr>
                         ) : appointments.map(appointment => {
                             const [statusLabel, statusClass] = getStatusMeta(appointment.status);
                             return (
@@ -452,7 +463,7 @@ export default function AppointmentsTab() {
                                                     <button onClick={() => handleQuickStatus(appointment, 'no_show')} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-200">Không đến</button>
                                                 </>
                                             )}
-                                            {isDentist && appointment.status === 'arrived' && (
+                                            {isDentist && ['confirmed', 'arrived'].includes(appointment.status) && (
                                                 <button onClick={() => handleQuickStatus(appointment, 'in_progress')} className="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700 hover:bg-indigo-100">Bắt đầu khám</button>
                                             )}
                                             {isFrontDesk && appointment.status === 'pending' && (
@@ -488,65 +499,92 @@ export default function AppointmentsTab() {
             </div>
 
             {rescheduleAppt && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4">
-                    <form onSubmit={submitReschedule} className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
-                        <div className="mb-5 flex items-start justify-between gap-4">
+                <ModalBackdrop onClose={() => setRescheduleAppt(null)}>
+                    <form onSubmit={submitReschedule} className="my-6 w-full max-w-xl overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+                        <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-[#F8FCFC] p-6">
                             <div>
                                 <p className="text-sm font-black uppercase text-cyan-700">Dời lịch hẹn</p>
                                 <h3 className="mt-1 text-xl font-black text-blue-950">Lịch #{rescheduleAppt.id}</h3>
                                 <p className="mt-1 text-sm text-slate-500">{rescheduleAppt.patientName}</p>
                             </div>
-                            <button type="button" onClick={() => setRescheduleAppt(null)} className="rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600">Đóng</button>
+                            <button type="button" onClick={() => setRescheduleAppt(null)} className="grid h-10 w-10 place-items-center rounded-full bg-white text-xl font-black text-slate-500 shadow-sm hover:bg-blue-50 hover:text-blue-700" aria-label="Đóng form dời lịch">×</button>
                         </div>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <Field label="Ngày mới" type="date" min={todayValue()} value={rescheduleForm.appointmentDate} onChange={value => setRescheduleForm({ ...rescheduleForm, appointmentDate: value })} required />
-                            <Field label="Giờ mới" type="time" value={rescheduleForm.appointmentTime} onChange={value => setRescheduleForm({ ...rescheduleForm, appointmentTime: value })} required />
+                        <div className="max-h-[calc(100vh-12rem)] overflow-y-auto p-6">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <Field label="Ngày mới" type="date" min={todayValue()} value={rescheduleForm.appointmentDate} onChange={value => setRescheduleForm({ ...rescheduleForm, appointmentDate: value })} required />
+                                <Field label="Giờ mới" type="time" value={rescheduleForm.appointmentTime} onChange={value => setRescheduleForm({ ...rescheduleForm, appointmentTime: value })} required />
+                            </div>
+                            <div className="mt-4 space-y-4">
+                                <Textarea label="Lý do dời lịch" value={rescheduleForm.reason} onChange={value => setRescheduleForm({ ...rescheduleForm, reason: value })} />
+                                <Textarea label="Ghi chú nội bộ" value={rescheduleForm.note} onChange={value => setRescheduleForm({ ...rescheduleForm, note: value })} />
+                            </div>
                         </div>
-                        <div className="mt-4 space-y-4">
-                            <Textarea label="Lý do dời lịch" value={rescheduleForm.reason} onChange={value => setRescheduleForm({ ...rescheduleForm, reason: value })} />
-                            <Textarea label="Ghi chú nội bộ" value={rescheduleForm.note} onChange={value => setRescheduleForm({ ...rescheduleForm, note: value })} />
-                        </div>
-                        <div className="mt-6 flex justify-end">
+                        <div className="flex justify-end border-t border-blue-100 bg-white p-6">
                             <button type="submit" className="rounded-xl bg-cyan-700 px-5 py-3 text-sm font-black text-white hover:bg-cyan-800">Lưu lịch mới</button>
                         </div>
                     </form>
-                </div>
+                </ModalBackdrop>
             )}
 
             {selectedAppt && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4">
-                    <form onSubmit={submitMedicalRecord} className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
-                        <div className="mb-5 flex items-start justify-between gap-4">
+                <ModalBackdrop onClose={() => setSelectedAppt(null)}>
+                    <form onSubmit={submitMedicalRecord} className="my-6 w-full max-w-5xl overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+                        <div className="flex flex-col gap-4 border-b border-blue-100 bg-[linear-gradient(115deg,#F8FCFC_0%,#ffffff_55%,#EAF7F5_100%)] p-6 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                                 <p className="text-sm font-black uppercase text-blue-700">Hồ sơ khám</p>
-                                <h3 className="mt-1 text-xl font-black text-blue-950">{selectedAppt.patientName}</h3>
+                                <h3 className="mt-1 text-2xl font-black text-blue-950">{selectedAppt.patientName}</h3>
+                                <p className="mt-2 text-sm font-semibold text-slate-500">
+                                    Lịch #{selectedAppt.id} · {new Date(selectedAppt.appointmentDate).toLocaleDateString('vi-VN')} · {selectedAppt.appointmentTime}
+                                </p>
                             </div>
-                            <button type="button" onClick={() => setSelectedAppt(null)} className="rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600">Đóng</button>
+                            <button type="button" onClick={() => setSelectedAppt(null)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-xl font-black text-slate-500 shadow-sm hover:bg-blue-50 hover:text-blue-700" aria-label="Đóng form ghi hồ sơ">×</button>
                         </div>
-                        <div className="space-y-4">
-                            <Textarea label="Lý do khám" value={recordForm.chiefComplaint} onChange={value => setRecordForm({ ...recordForm, chiefComplaint: value })} />
-                            <Textarea label="Chẩn đoán" required value={recordForm.diagnosis} onChange={value => setRecordForm({ ...recordForm, diagnosis: value })} />
-                            <Textarea label="Kế hoạch điều trị" value={recordForm.treatmentPlan} onChange={value => setRecordForm({ ...recordForm, treatmentPlan: value })} />
-                            <Textarea label="Thủ thuật đã thực hiện" value={recordForm.procedures} onChange={value => setRecordForm({ ...recordForm, procedures: value })} />
-                            <Textarea label="Đơn thuốc" value={recordForm.prescription} onChange={value => setRecordForm({ ...recordForm, prescription: value })} />
-                            <Textarea label="Ghi chú dặn dò" value={recordForm.notes} onChange={value => setRecordForm({ ...recordForm, notes: value })} />
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <Field label="Ngày tái khám" type="date" value={recordForm.nextAppointmentDate} onChange={value => setRecordForm({ ...recordForm, nextAppointmentDate: value })} />
-                                <Field label="Ghi chú tái khám" value={recordForm.nextAppointmentNote} onChange={value => setRecordForm({ ...recordForm, nextAppointmentNote: value })} />
+                        <div className="max-h-[calc(100vh-13rem)] overflow-y-auto p-6">
+                            <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+                                <section className="space-y-4">
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <Textarea label="Lý do khám" value={recordForm.chiefComplaint} onChange={value => setRecordForm({ ...recordForm, chiefComplaint: value })} />
+                                        <Textarea label="Chẩn đoán" required value={recordForm.diagnosis} onChange={value => setRecordForm({ ...recordForm, diagnosis: value })} />
+                                    </div>
+                                    <Textarea label="Kế hoạch điều trị" value={recordForm.treatmentPlan} onChange={value => setRecordForm({ ...recordForm, treatmentPlan: value })} />
+                                    <Textarea label="Thủ thuật đã thực hiện" value={recordForm.procedures} onChange={value => setRecordForm({ ...recordForm, procedures: value })} />
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <Textarea label="Đơn thuốc" value={recordForm.prescription} onChange={value => setRecordForm({ ...recordForm, prescription: value })} />
+                                        <Textarea label="Ghi chú dặn dò" value={recordForm.notes} onChange={value => setRecordForm({ ...recordForm, notes: value })} />
+                                    </div>
+                                </section>
+                                <aside className="space-y-4 rounded-2xl border border-blue-100 bg-[#F8FCFC] p-4">
+                                    <div>
+                                        <p className="text-xs font-black uppercase text-slate-400">Dịch vụ</p>
+                                        <p className="mt-2 text-sm font-black leading-6 text-blue-950">{selectedAppt.serviceNames || 'Chưa có dịch vụ'}</p>
+                                    </div>
+                                    <div className="grid gap-4">
+                                        <Field label="Ngày tái khám" type="date" value={recordForm.nextAppointmentDate} onChange={value => setRecordForm({ ...recordForm, nextAppointmentDate: value })} />
+                                        <Field label="Ghi chú tái khám" value={recordForm.nextAppointmentNote} onChange={value => setRecordForm({ ...recordForm, nextAppointmentNote: value })} />
+                                    </div>
+                                    <div>
+                                        <p className="mb-2 text-sm font-bold text-slate-700">Tài liệu đính kèm</p>
+                                        <label className="flex cursor-pointer items-center justify-center rounded-xl border border-blue-200 bg-white px-4 py-3 text-center text-sm font-black text-blue-700 hover:bg-blue-50">
+                                            {uploadingFiles ? 'Đang tải...' : 'Tải ảnh/PDF'}
+                                            <input type="file" multiple className="hidden" accept="image/*,.pdf" onChange={handleFilesUpload} disabled={uploadingFiles} />
+                                        </label>
+                                        {recordForm.attachments.length > 0 && (
+                                            <div className="mt-3 rounded-xl bg-white p-3 text-sm font-bold text-slate-500">
+                                                {recordForm.attachments.length} tài liệu đã tải lên.
+                                            </div>
+                                        )}
+                                    </div>
+                                </aside>
                             </div>
-                            <label className="inline-flex cursor-pointer rounded-full bg-blue-50 px-4 py-2 text-sm font-black text-blue-700 hover:bg-blue-100">
-                                {uploadingFiles ? 'Đang tải tài liệu...' : 'Tải tài liệu đính kèm'}
-                                <input type="file" multiple className="hidden" accept="image/*,.pdf" onChange={handleFilesUpload} disabled={uploadingFiles} />
-                            </label>
-                            {recordForm.attachments.length > 0 && (
-                                <p className="text-sm font-bold text-slate-500">{recordForm.attachments.length} tài liệu đã tải lên.</p>
-                            )}
                         </div>
-                        <div className="mt-6 flex justify-end">
+                        <div className="flex flex-col gap-3 border-t border-blue-100 bg-white p-6 sm:flex-row sm:justify-end">
+                            <button type="button" onClick={() => setSelectedAppt(null)} className="rounded-xl border border-blue-100 bg-white px-5 py-3 text-sm font-black text-slate-600 hover:bg-blue-50">
+                                Hủy
+                            </button>
                             <button type="submit" className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-black text-white hover:bg-blue-800">Lưu hồ sơ và hoàn thành</button>
                         </div>
                     </form>
-                </div>
+                </ModalBackdrop>
             )}
 
             {detailAppt && (
@@ -571,6 +609,27 @@ export default function AppointmentsTab() {
 
 function Panel({ children }) {
     return <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-xl shadow-blue-100">{children}</div>;
+}
+
+function ModalBackdrop({ children, onClose }) {
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') onClose();
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:p-6"
+            onMouseDown={onClose}
+            role="presentation"
+        >
+            {children}
+        </div>
+    );
 }
 
 function Field({ label, value, onChange, ...props }) {
@@ -607,10 +666,34 @@ function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, 
     const currentStepIndex = workflowStatusSteps.findIndex(([key]) => key === appointment.status);
     const isCancelled = appointment.status === 'cancelled';
 
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') onClose();
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4">
-            <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-                <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-[linear-gradient(115deg,#eef7ff_0%,#ffffff_55%,#e8f3ff_100%)] p-6">
+        <div
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:p-6"
+            onMouseDown={onClose}
+            role="presentation"
+        >
+            <div
+                className="relative my-4 w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+                onMouseDown={(event) => event.stopPropagation()}
+            >
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="fixed right-5 top-5 z-[60] grid h-11 w-11 place-items-center rounded-full border border-blue-100 bg-white text-xl font-black text-slate-500 shadow-lg shadow-slate-900/10 hover:bg-blue-50 hover:text-blue-700"
+                    aria-label="Đóng chi tiết lịch hẹn"
+                >
+                    ×
+                </button>
+                <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-[linear-gradient(115deg,#eef7ff_0%,#ffffff_55%,#e8f3ff_100%)] p-6 pr-16">
                     <div>
                         <p className="text-sm font-black uppercase text-blue-700">Chi tiết lịch hẹn</p>
                         <h3 className="mt-1 text-2xl font-black text-blue-950">Lịch #{appointment.id}</h3>
@@ -670,11 +753,31 @@ function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, 
                             <p className="font-black text-blue-950">Thao tác nhanh</p>
                             <div className="mt-4 grid gap-2">
                                 {isFrontDesk && ['pending', 'confirmed'].includes(appointment.status) && (
+                                    <button type="button" onClick={onReschedule} className="rounded-xl bg-cyan-50 px-4 py-3 text-sm font-black text-cyan-700 hover:bg-cyan-100">
+                                        Dời lịch hẹn
+                                    </button>
+                                )}
+                                {isFrontDesk && appointment.status === 'confirmed' && (
+                                    <>
+                                        <button type="button" onClick={() => onStatusChange('arrived')} className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 hover:bg-emerald-100">
+                                            Check-in khách đến
+                                        </button>
+                                        <button type="button" onClick={() => onStatusChange('no_show')} className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-600 hover:bg-slate-200">
+                                            Đánh dấu không đến
+                                        </button>
+                                    </>
+                                )}
+                                {isDentist && ['confirmed', 'arrived'].includes(appointment.status) && (
+                                    <button type="button" onClick={() => onStatusChange('in_progress')} className="rounded-xl bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-700 hover:bg-indigo-100">
+                                        Bắt đầu khám
+                                    </button>
+                                )}
+                                {isFrontDesk && ['pending', 'confirmed'].includes(appointment.status) && (
                                     <button type="button" onClick={onCancel} className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-black text-rose-600 hover:bg-rose-100">
                                         Hủy lịch hẹn
                                     </button>
                                 )}
-                                {isDentist && appointment.status === 'confirmed' && (
+                                {isDentist && ['arrived', 'in_progress'].includes(appointment.status) && (
                                     <button type="button" onClick={onOpenRecord} className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 hover:bg-emerald-100">
                                         Ghi hồ sơ khám
                                     </button>

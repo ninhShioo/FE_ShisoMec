@@ -122,6 +122,7 @@ function Home() {
   const [services, setServices] = useState([]);
   const [dentists, setDentists] = useState([]);
   const [homeReviews, setHomeReviews] = useState([]);
+  const [publicSettings, setPublicSettings] = useState(null);
   const [homeLoading, setHomeLoading] = useState(true);
   const isStaff = user && user.role !== 'patient';
 
@@ -130,10 +131,11 @@ function Home() {
 
     const loadHomeData = async () => {
       try {
-        const [serviceResult, dentistResult, reviewResult] = await Promise.allSettled([
+        const [serviceResult, dentistResult, reviewResult, settingsResult] = await Promise.allSettled([
           api.get('/services'),
           api.get('/users/public/dentists'),
-          api.get('/reviews/public')
+          api.get('/reviews/public'),
+          api.get('/settings/public')
         ]);
 
         if (!mounted) return;
@@ -148,6 +150,10 @@ function Home() {
 
         if (reviewResult.status === 'fulfilled') {
           setHomeReviews(reviewResult.value.data?.data || []);
+        }
+
+        if (settingsResult.status === 'fulfilled') {
+          setPublicSettings(settingsResult.value.data?.data || null);
         }
       } catch (error) {
         console.error('Khong the tai du lieu trang chu:', error);
@@ -178,6 +184,14 @@ function Home() {
   const primaryAction = isStaff
     ? { to: '/dashboard', label: 'Mở khu làm việc' }
     : { to: user ? '/book-appointment' : '/login', label: user ? 'Đặt lịch ngay' : 'Đăng nhập đặt lịch' };
+
+  const clinicInfo = publicSettings || {
+    phone: '0869 800 318',
+    email: 'contact@phenikaadental.vn',
+    address: 'Phenikaa Dental',
+    openingHours: '08:00 - 20:00',
+    allowOnlineBooking: true
+  };
 
   const stats = [
     ['15+', 'Năm kinh nghiệm', 'Trong lĩnh vực nha khoa'],
@@ -359,7 +373,9 @@ function Home() {
             </div>
             <div className="mt-8 rounded-2xl bg-white p-4 text-blue-800">
               <p className="text-xs font-black uppercase text-slate-500">Hotline 24/7</p>
-              <p className="mt-1 text-2xl font-black">0869 800 318</p>
+              <p className="mt-1 text-2xl font-black">{clinicInfo.phone}</p>
+              <p className="mt-3 text-sm font-bold text-slate-600">{clinicInfo.openingHours}</p>
+              <p className="mt-1 text-sm text-slate-500">{clinicInfo.address}</p>
             </div>
           </div>
 

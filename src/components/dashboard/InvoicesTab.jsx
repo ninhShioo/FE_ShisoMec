@@ -20,6 +20,7 @@ export default function InvoicesTab() {
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedMethods, setSelectedMethods] = useState({});
+    const [paymentAmounts, setPaymentAmounts] = useState({});
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -44,7 +45,8 @@ export default function InvoicesTab() {
 
         try {
             await api.put(`/invoices/${id}/pay`, {
-                paymentMethod: selectedMethods[id] || 'cash'
+                paymentMethod: selectedMethods[id] || 'cash',
+                amount: paymentAmounts[id] ? Number(paymentAmounts[id]) : undefined
             });
             toast.success('Đã xác nhận thanh toán.');
             fetchInvoices();
@@ -65,9 +67,20 @@ export default function InvoicesTab() {
     }, [invoices, statusFilter, searchTerm]);
 
     const paidInvoices = invoices.filter(invoice => invoice.status === 'paid');
-    const unpaidInvoices = invoices.filter(invoice => invoice.status === 'unpaid');
-    const totalRevenue = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount || 0), 0);
-    const pendingAmount = unpaidInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount || 0), 0);
+    const unpaidInvoices = invoices.filter(invoice => ['unpaid', 'partial'].includes(invoice.status));
+    const collectedAmount = invoices.reduce((sum, invoice) => {
+        const paidAmount = Number(invoice.paidAmount || 0);
+        if (paidAmount > 0) return sum + paidAmount;
+        return invoice.status === 'paid' ? sum + Number(invoice.totalAmount || 0) : sum;
+    }, 0);
+    const pendingAmount = unpaidInvoices.reduce((sum, invoice) => sum + Number(invoice.outstandingAmount ?? invoice.totalAmount ?? 0), 0);
+
+    const invoiceStatusMeta = (status) => {
+        if (status === 'paid') return ['Đã thanh toán', 'bg-emerald-50 text-emerald-700'];
+        if (status === 'partial') return ['Thanh toán một phần', 'bg-amber-50 text-amber-700'];
+        if (status === 'cancelled') return ['Đã hủy', 'bg-slate-100 text-slate-600'];
+        return ['Chưa thanh toán', 'bg-rose-50 text-rose-700'];
+    };
 
     if (loading) {
         return (
@@ -95,7 +108,7 @@ export default function InvoicesTab() {
                     <SummaryCard label="Tổng hóa đơn" value={invoices.length} tone="blue" />
                     <SummaryCard label="Đã thanh toán" value={paidInvoices.length} tone="emerald" />
                     <SummaryCard label="Chưa thanh toán" value={unpaidInvoices.length} tone="rose" />
-                    <SummaryCard label="Đã thu" value={formatCurrency(totalRevenue)} tone="violet" compact />
+                    <SummaryCard label="Đã thu" value={formatCurrency(collectedAmount)} tone="violet" compact />
                 </div>
 
                 <div className="grid gap-3 border-t border-blue-100 px-6 py-5 md:grid-cols-[1fr_220px]">
@@ -112,6 +125,7 @@ export default function InvoicesTab() {
                     >
                         <option value="all">Tất cả trạng thái</option>
                         <option value="paid">Đã thanh toán</option>
+                        <option value="partial">Thanh toán một phần</option>
                         <option value="unpaid">Chưa thanh toán</option>
                     </select>
                 </div>
@@ -140,7 +154,26 @@ export default function InvoicesTab() {
                                         <p className="font-black text-blue-950">{invoice.patientName}</p>
                                         {invoice.patientPhone && <p className="text-xs text-slate-500">{invoice.patientPhone}</p>}
                                     </td>
-                                    <td className="px-6 py-4 font-black text-blue-700">{formatCurrency(invoice.totalAmount)}</td>
+                                    <td className="px-6 py-4">
+                                        <p className="font-black text-blue-700">{formatCurrency(invoice.totalAmount)}</p>
+                                        {Number(invoice.discountAmount || 0) > 0 && (
+                                            <p className="text-xs font-bold text-emerald-600">Giảm {formatCurrency(invoice.discountAmount)}</p>
+                                        )}
+                                        <p className="text-xs text-slate-500">Đã thu {formatCurrency(invoice.paidAmount)}</p>
+                                        {Number(invoice.outstandingAmount || 0) > 0 && (
+                                            <p className="text-xs font-black text-rose-600">Còn {formatCurrency(invoice.outstandingAmount)}</p>
+                                        )}
+                                        {Array.isArray(invoice.items) && invoice.items.length > 0 && (
+                                            <div className="mt-2 space-y-1 rounded-xl bg-blue-50/60 p-2">
+                                                {invoice.items.map((item) => (
+                                                    <p key={item.id} className="flex justify-between gap-3 text-xs text-slate-600">
+                                                        <span>{item.description}</span>
+                                                        <span className="font-bold">{formatCurrency(item.totalPrice)}</span>
+                                                    </p>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </td>
                                     <td className="px-6 py-4 text-sm text-slate-700">
                                         {invoice.status === 'paid' ? (
                                             <div>
@@ -148,6 +181,7 @@ export default function InvoicesTab() {
                                                 {invoice.paidAt && <p className="text-xs text-slate-400">{new Date(invoice.paidAt).toLocaleString('vi-VN')}</p>}
                                             </div>
                                         ) : (
+                                            <div>
                                             <select
                                                 value={selectedMethods[invoice.id] || invoice.paymentMethod || 'cash'}
                                                 onChange={(event) => setSelectedMethods({ ...selectedMethods, [invoice.id]: event.target.value })}
@@ -159,15 +193,25 @@ export default function InvoicesTab() {
                                                 <option value="vnpay">VNPay</option>
                                                 <option value="momo">MoMo</option>
                                             </select>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max={Number(invoice.outstandingAmount || invoice.totalAmount)}
+                                                value={paymentAmounts[invoice.id] || ''}
+                                                onChange={(event) => setPaymentAmounts({ ...paymentAmounts, [invoice.id]: event.target.value })}
+                                                placeholder={`Tối đa ${formatCurrency(invoice.outstandingAmount || invoice.totalAmount)}`}
+                                                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                                            />
+                                            </div>
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`rounded-full px-3 py-1 text-xs font-black ${invoice.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                                            {invoice.status === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                        <span className={`rounded-full px-3 py-1 text-xs font-black ${invoiceStatusMeta(invoice.status)[1]}`}>
+                                            {invoiceStatusMeta(invoice.status)[0]}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        {invoice.status === 'unpaid' ? (
+                                        {['unpaid', 'partial'].includes(invoice.status) ? (
                                             <button onClick={() => handlePay(invoice.id)} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white hover:bg-blue-800">
                                                 Xác nhận thu tiền
                                             </button>

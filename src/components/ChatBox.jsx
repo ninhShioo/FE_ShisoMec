@@ -14,6 +14,7 @@ export default function ChatBox() {
     const [input, setInput] = useState('');
     const socketRef = useRef(null);
     const messagesEndRef = useRef(null);
+    const selectedPatientRef = useRef(null);
 
     const isStaffChat = user && ['admin', 'staff'].includes(user.role);
     const totalUnread = useMemo(
@@ -33,6 +34,10 @@ export default function ChatBox() {
     useEffect(() => {
         if (isOpen) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isOpen]);
+
+    useEffect(() => {
+        selectedPatientRef.current = selectedPatient;
+    }, [selectedPatient]);
 
     useEffect(() => {
         if (!isOpen || !user) return undefined;
@@ -55,13 +60,13 @@ export default function ChatBox() {
                                 ...item,
                                 lastMessage: data.message,
                                 lastMessageAt: data.createdAt,
-                                unreadCount: selectedPatient?.id === data.patientId ? 0 : Number(item.unreadCount || 0) + 1
+                                unreadCount: selectedPatientRef.current?.id === data.patientId ? 0 : Number(item.unreadCount || 0) + 1
                             }
                             : item
                     ));
                 });
 
-                if (selectedPatient && data.patientId === selectedPatient.id) {
+                if (selectedPatientRef.current && data.patientId === selectedPatientRef.current.id) {
                     setMessages((prev) => [...prev, data]);
                 }
                 return;
@@ -73,7 +78,7 @@ export default function ChatBox() {
         return () => {
             socketRef.current?.disconnect();
         };
-    }, [isOpen, user, isStaffChat, selectedPatient]);
+    }, [isOpen, user, isStaffChat]);
 
     useEffect(() => {
         if (!isOpen || !user) return;
@@ -83,7 +88,9 @@ export default function ChatBox() {
                 const res = await api.get('/chat/contacts');
                 const nextContacts = res.data.data || [];
                 setContacts(nextContacts);
-                if (!selectedPatient && nextContacts.length) setSelectedPatient(nextContacts[0]);
+                if (nextContacts.length) {
+                    setSelectedPatient(current => current || nextContacts[0]);
+                }
                 return;
             }
 
@@ -118,6 +125,27 @@ export default function ChatBox() {
         });
         setInput('');
     };
+
+    const updateConversationStatus = async (status) => {
+        if (!selectedPatient) return;
+
+        try {
+            await api.put(`/chat/conversations/${selectedPatient.id}`, { status });
+            const nextPatient = { ...selectedPatient, conversationStatus: status, assignedTo: user.id, assignedToName: user.fullName };
+            setSelectedPatient(nextPatient);
+            setContacts((current) => current.map((contact) => (
+                contact.id === selectedPatient.id ? nextPatient : contact
+            )));
+        } catch (error) {
+            console.error('Không thể cập nhật hội thoại:', error);
+        }
+    };
+
+    const conversationStatusLabel = (status) => ({
+        new: 'Mới',
+        open: 'Đang xử lý',
+        closed: 'Đã đóng'
+    }[status] || 'Mới');
 
     if (!user) return null;
 
@@ -165,6 +193,9 @@ export default function ChatBox() {
                                             )}
                                         </span>
                                         <span className="mt-1 block truncate text-xs opacity-75">{contact.lastMessage || contact.phone || contact.email}</span>
+                                        <span className="mt-2 inline-flex rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase text-blue-700">
+                                            {conversationStatusLabel(contact.conversationStatus)}
+                                        </span>
                                     </button>
                                 ))}
                             </div>
@@ -178,10 +209,24 @@ export default function ChatBox() {
                                     Trực tuyến
                                 </div>
                                 <h3 className="mt-2 text-lg font-black text-blue-950">{title}</h3>
+                                {isStaffChat && selectedPatient && (
+                                    <p className="mt-1 text-xs font-bold text-slate-500">
+                                        {conversationStatusLabel(selectedPatient.conversationStatus)}{selectedPatient.assignedToName ? ` - ${selectedPatient.assignedToName}` : ''}
+                                    </p>
+                                )}
                                 <p className="text-xs text-slate-500">
                                     {isStaffChat ? (selectedPatient?.fullName || 'Chọn khách hàng') : 'Hội thoại riêng với phòng khám'}
                                 </p>
                             </div>
+                            {isStaffChat && selectedPatient && (
+                                <button
+                                    type="button"
+                                    onClick={() => updateConversationStatus(selectedPatient.conversationStatus === 'closed' ? 'open' : 'closed')}
+                                    className="mr-2 rounded-full border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-50"
+                                >
+                                    {selectedPatient.conversationStatus === 'closed' ? 'Mở lại' : 'Đóng xử lý'}
+                                </button>
+                            )}
                             <button
                                 onClick={() => setIsOpen(false)}
                                 className="grid h-10 w-10 place-items-center rounded-full border border-blue-200 bg-white text-2xl font-black text-slate-500 transition hover:bg-blue-50 hover:text-blue-700"

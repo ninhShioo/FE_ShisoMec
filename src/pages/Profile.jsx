@@ -69,6 +69,9 @@ export default function Profile() {
     }, [user]);
 
     const getStatusText = (status) => ({
+        arrived: 'Khách đã đến',
+        in_progress: 'Đang khám',
+        no_show: 'Không đến',
         pending: 'Chờ xác nhận',
         confirmed: 'Đã xác nhận',
         completed: 'Hoàn thành',
@@ -76,11 +79,21 @@ export default function Profile() {
     }[status] || status);
 
     const getStatusClass = (status) => ({
+        arrived: 'bg-cyan-50 text-cyan-700',
+        in_progress: 'bg-indigo-50 text-indigo-700',
+        no_show: 'bg-slate-100 text-slate-600',
         pending: 'bg-amber-50 text-amber-700',
         confirmed: 'bg-blue-50 text-blue-700',
         completed: 'bg-emerald-50 text-emerald-700',
         cancelled: 'bg-rose-50 text-rose-700'
     }[status] || 'bg-slate-100 text-slate-600');
+
+    const getInvoiceStatusMeta = (status) => ({
+        paid: ['Đã thanh toán', 'bg-emerald-50 text-emerald-700'],
+        partial: ['Thanh toán một phần', 'bg-amber-50 text-amber-700'],
+        unpaid: ['Chưa thanh toán', 'bg-rose-50 text-rose-700'],
+        cancelled: ['Đã hủy', 'bg-slate-100 text-slate-600']
+    }[status] || [status, 'bg-slate-100 text-slate-600']);
 
     const handleCancelAppointment = async (appointmentId) => {
         if (!window.confirm('Bạn muốn hủy lịch hẹn này?')) return;
@@ -170,7 +183,7 @@ export default function Profile() {
     };
 
     const stats = useMemo(() => {
-        const upcoming = appointments.filter(item => ['pending', 'confirmed'].includes(item.status)).length;
+        const upcoming = appointments.filter(item => ['pending', 'confirmed', 'arrived', 'in_progress'].includes(item.status)).length;
         const completed = appointments.filter(item => item.status === 'completed').length;
         const unpaid = invoices.filter(item => item.status === 'unpaid').length;
 
@@ -331,9 +344,23 @@ export default function Profile() {
                                                 </div>
                                             </div>
                                             <div className="mt-4 rounded-2xl bg-white p-4 text-sm leading-6 text-slate-600">
-                                                <p><span className="font-black text-blue-950">Chẩn đoán:</span> {record.diagnosis}</p>
+                                                {record.serviceNames && <p><span className="font-black text-blue-950">Dịch vụ:</span> {record.serviceNames}</p>}
+                                                {record.chiefComplaint && <p className="mt-2"><span className="font-black text-blue-950">Lý do khám:</span> {record.chiefComplaint}</p>}
+                                                <p className="mt-2"><span className="font-black text-blue-950">Chẩn đoán:</span> {record.diagnosis}</p>
+                                                {record.treatmentPlan && <p className="mt-2"><span className="font-black text-blue-950">Kế hoạch điều trị:</span> {record.treatmentPlan}</p>}
+                                                {record.procedures && <p className="mt-2"><span className="font-black text-blue-950">Thủ thuật:</span> {record.procedures}</p>}
                                                 {record.prescription && <p className="mt-2"><span className="font-black text-blue-950">Đơn thuốc:</span> {record.prescription}</p>}
                                                 {record.notes && <p className="mt-2"><span className="font-black text-blue-950">Ghi chú:</span> {record.notes}</p>}
+                                                {record.nextAppointmentDate && <p className="mt-2"><span className="font-black text-blue-950">Tái khám:</span> {new Date(record.nextAppointmentDate).toLocaleDateString('vi-VN')}{record.nextAppointmentNote ? ` - ${record.nextAppointmentNote}` : ''}</p>}
+                                                {Array.isArray(record.attachments) && record.attachments.length > 0 && (
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                        {record.attachments.map((url, index) => (
+                                                            <a key={`${url}-${index}`} href={url} target="_blank" rel="noreferrer" className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 hover:bg-blue-100">
+                                                                Tài liệu {index + 1}
+                                                            </a>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         </article>
                                     ))}
@@ -363,10 +390,18 @@ export default function Profile() {
                                                     <td className="px-4 py-4 font-black text-blue-950">INV-{invoice.id}</td>
                                                     <td className="px-4 py-4 text-sm text-slate-600">{new Date(invoice.createdAt).toLocaleDateString('vi-VN')}</td>
                                                     <td className="px-4 py-4 text-sm text-slate-600">{paymentLabels[invoice.lastPaymentMethod || invoice.paymentMethod] || invoice.paymentMethod || '-'}</td>
-                                                    <td className="px-4 py-4 font-black text-blue-700">{formatCurrency(invoice.totalAmount)}</td>
                                                     <td className="px-4 py-4">
-                                                        <span className={`rounded-full px-3 py-1 text-xs font-black ${invoice.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                                                            {invoice.status === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                                        <p className="font-black text-blue-700">{formatCurrency(invoice.totalAmount)}</p>
+                                                        {Number(invoice.paidAmount || 0) > 0 && (
+                                                            <p className="mt-1 text-xs font-bold text-emerald-700">Đã thu {formatCurrency(invoice.paidAmount)}</p>
+                                                        )}
+                                                        {Number(invoice.outstandingAmount || 0) > 0 && (
+                                                            <p className="mt-1 text-xs font-bold text-rose-600">Còn {formatCurrency(invoice.outstandingAmount)}</p>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-4">
+                                                        <span className={`rounded-full px-3 py-1 text-xs font-black ${getInvoiceStatusMeta(invoice.status)[1]}`}>
+                                                            {getInvoiceStatusMeta(invoice.status)[0]}
                                                         </span>
                                                     </td>
                                                 </tr>

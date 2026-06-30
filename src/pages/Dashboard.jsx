@@ -9,8 +9,10 @@ import UsersTab from '../components/dashboard/UsersTab';
 import SettingsTab from '../components/dashboard/SettingsTab';
 import PromotionsTab from '../components/dashboard/PromotionsTab';
 import SchedulesTab from '../components/dashboard/SchedulesTab';
+import DentistDayOffTab from '../components/dashboard/DentistDayOffTab';
 import WorkspaceSummary from '../components/dashboard/WorkspaceSummary';
 import ReviewsTab from '../components/dashboard/ReviewsTab';
+import NotificationsHistoryTab from '../components/dashboard/NotificationsHistoryTab';
 
 const roleLabels = {
     admin: 'Quản trị viên',
@@ -39,7 +41,7 @@ const roleWorkflows = {
     dentist: [
         ['Lịch của tôi', 'Xem các lịch hẹn được phân công.'],
         ['Hồ sơ điều trị', 'Ghi chẩn đoán, đơn thuốc, ghi chú và tài liệu đính kèm.'],
-        ['Hoàn tất khám', 'Cập nhật kết quả để nhân viên xử lý hóa đơn.']
+        ['Đăng ký nghỉ', 'Gửi yêu cầu nghỉ để admin/lễ tân duyệt và khóa lịch đặt khám.']
     ]
 };
 
@@ -59,6 +61,8 @@ export default function Dashboard() {
             user.role === 'admin' && ['services', 'Dịch vụ'],
             (user.role === 'admin' || user.role === 'staff') && ['invoices', 'Hóa đơn'],
             (user.role === 'admin' || user.role === 'staff') && ['schedules', 'Lịch làm việc'],
+            user.role === 'dentist' && ['dayOff', 'Đăng ký nghỉ'],
+            ['notifications', 'Thông báo'],
             user.role === 'admin' && ['promotions', 'Khuyến mãi'],
             user.role === 'admin' && ['reviews', 'Đánh giá'],
             user.role === 'admin' && ['users', 'Tài khoản'],
@@ -162,6 +166,8 @@ export default function Dashboard() {
                     {activeTab === 'services' && user.role === 'admin' && <ServicesTab />}
                     {activeTab === 'invoices' && (user.role === 'admin' || user.role === 'staff') && <InvoicesTab />}
                     {activeTab === 'schedules' && (user.role === 'admin' || user.role === 'staff') && <SchedulesTab />}
+                    {activeTab === 'dayOff' && user.role === 'dentist' && <DentistDayOffTab />}
+                    {activeTab === 'notifications' && <NotificationsHistoryTab />}
                     {activeTab === 'promotions' && user.role === 'admin' && <PromotionsTab />}
                     {activeTab === 'reviews' && user.role === 'admin' && <ReviewsTab />}
                     {activeTab === 'users' && user.role === 'admin' && <UsersTab />}

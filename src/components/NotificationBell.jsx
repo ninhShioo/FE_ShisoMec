@@ -8,6 +8,7 @@ const typeLabels = {
     appointment: 'Lịch hẹn',
     payment: 'Hóa đơn',
     chat: 'Chat',
+    leave: 'Nghỉ phép',
     system: 'Hệ thống'
 };
 
@@ -15,12 +16,14 @@ const typeClasses = {
     appointment: 'bg-blue-50 text-blue-700',
     payment: 'bg-emerald-50 text-emerald-700',
     chat: 'bg-cyan-50 text-cyan-700',
+    leave: 'bg-amber-50 text-amber-700',
     system: 'bg-slate-100 text-slate-700'
 };
 
 export default function NotificationBell() {
     const [open, setOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
+    const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(false);
     const dropdownRef = useRef(null);
 
@@ -34,6 +37,7 @@ export default function NotificationBell() {
             setLoading(true);
             const res = await api.get('/notifications');
             setNotifications(res.data.data || []);
+            setSummary(res.data.summary || null);
         } catch {
             toast.error('Không thể tải thông báo.');
         } finally {
@@ -122,6 +126,15 @@ export default function NotificationBell() {
                     </div>
 
                     <div className="max-h-[420px] overflow-y-auto">
+                        {summary?.byType && (
+                            <div className="grid grid-cols-2 gap-2 border-b border-blue-50 p-3">
+                                {Object.entries(typeLabels).map(([type, label]) => (
+                                    <div key={type} className={`rounded-xl px-3 py-2 text-xs font-black ${typeClasses[type] || typeClasses.system}`}>
+                                        {label}: {summary.byType[type]?.unread || 0}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         {loading ? (
                             <div className="p-5 text-sm font-bold text-slate-500">Đang tải thông báo...</div>
                         ) : notifications.length === 0 ? (

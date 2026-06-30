@@ -32,13 +32,20 @@ const emptyRecordForm = {
     chiefComplaint: '',
     diagnosis: '',
     treatmentPlan: '',
+    treatmentSessions: [],
     procedures: '',
+    toothPositions: [],
     prescription: '',
     notes: '',
     nextAppointmentDate: '',
     nextAppointmentNote: '',
     attachments: []
 };
+
+const toothNumbers = [
+    18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28,
+    48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38
+];
 
 export default function AppointmentsTab() {
     const { user } = useContext(AuthContext);
@@ -59,6 +66,9 @@ export default function AppointmentsTab() {
     const [recordForm, setRecordForm] = useState(emptyRecordForm);
     const [rescheduleAppt, setRescheduleAppt] = useState(null);
     const [rescheduleForm, setRescheduleForm] = useState({ appointmentDate: '', appointmentTime: '', reason: '', note: '' });
+    const [filters, setFilters] = useState({ date: '', dentistId: 'all', status: 'all' });
+    const [patientRecordHistory, setPatientRecordHistory] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
     const [uploadingFiles, setUploadingFiles] = useState(false);
     const [createForm, setCreateForm] = useState({
         patientId: '',
@@ -72,7 +82,12 @@ export default function AppointmentsTab() {
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
-            const resAppt = await api.get('/appointments');
+            const params = {};
+            if (filters.date) params.date = filters.date;
+            if (filters.status !== 'all') params.status = filters.status;
+            if (isFrontDesk && filters.dentistId !== 'all') params.dentistId = filters.dentistId;
+
+            const resAppt = await api.get('/appointments', { params });
             const nextAppointments = resAppt.data.data || [];
             setAppointments(nextAppointments);
             setDetailAppt(current => {
@@ -100,7 +115,7 @@ export default function AppointmentsTab() {
         } finally {
             setLoading(false);
         }
-    }, [isFrontDesk, user.role]);
+    }, [filters, isFrontDesk, user.role]);
 
     useEffect(() => {
         fetchData();
@@ -257,9 +272,55 @@ export default function AppointmentsTab() {
         }
     };
 
-    const openRecordForm = (appointment) => {
+    const openRecordForm = async (appointment) => {
         setSelectedAppt(appointment);
         setRecordForm(emptyRecordForm);
+        setPatientRecordHistory([]);
+
+        try {
+            setLoadingHistory(true);
+            const res = await api.get(`/records/patient/${appointment.patientId}`);
+            setPatientRecordHistory((res.data.data || []).filter(record => record.appointmentId !== appointment.id));
+        } catch {
+            toast.error('Không thể tải lịch sử hồ sơ cũ.');
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
+    const toggleTooth = (toothNumber) => {
+        setRecordForm(current => ({
+            ...current,
+            toothPositions: current.toothPositions.includes(toothNumber)
+                ? current.toothPositions.filter(item => item !== toothNumber)
+                : [...current.toothPositions, toothNumber].sort((a, b) => a - b)
+        }));
+    };
+
+    const addTreatmentSession = () => {
+        setRecordForm(current => ({
+            ...current,
+            treatmentSessions: [
+                ...current.treatmentSessions,
+                { title: '', plannedDate: '', note: '', status: 'planned' }
+            ]
+        }));
+    };
+
+    const updateTreatmentSession = (index, key, value) => {
+        setRecordForm(current => ({
+            ...current,
+            treatmentSessions: current.treatmentSessions.map((session, sessionIndex) => (
+                sessionIndex === index ? { ...session, [key]: value } : session
+            ))
+        }));
+    };
+
+    const removeTreatmentSession = (index) => {
+        setRecordForm(current => ({
+            ...current,
+            treatmentSessions: current.treatmentSessions.filter((_, sessionIndex) => sessionIndex !== index)
+        }));
     };
 
     const handleCreateInvoice = async (appointmentId) => {
@@ -300,6 +361,8 @@ export default function AppointmentsTab() {
             await api.post('/records', {
                 appointmentId: selectedAppt.id,
                 ...recordForm,
+                toothPositions: JSON.stringify(recordForm.toothPositions || []),
+                treatmentSessions: JSON.stringify(recordForm.treatmentSessions || []),
                 attachments: JSON.stringify(recordForm.attachments || [])
             });
             toast.success('Đã lưu hồ sơ khám.');
@@ -319,6 +382,9 @@ export default function AppointmentsTab() {
         ? 'Danh sách khách hàng đã được phân công cho bạn.'
         : 'Theo dõi lịch chờ xác nhận, phân công bác sĩ và xuất hóa đơn sau khi hoàn thành.';
     const appointmentTableColumns = isFrontDesk ? 7 : 6;
+    const warningAppointments = appointments.filter(appointment => appointment.warnings?.length > 0);
+    const pendingCount = appointments.filter(appointment => appointment.status === 'pending').length;
+    const todayAppointments = appointments.filter(appointment => String(appointment.appointmentDate || '').slice(0, 10) === todayValue()).length;
 
     return (
         <Panel>
@@ -411,6 +477,50 @@ export default function AppointmentsTab() {
                 </section>
             )}
 
+            <section className="grid gap-4 border-t border-blue-100 bg-slate-50/50 p-6 md:grid-cols-3">
+                <SummaryPill label="Lịch trong danh sách" value={appointments.length} />
+                <SummaryPill label="Hôm nay" value={todayAppointments} />
+                <SummaryPill label="Cần chú ý" value={warningAppointments.length || pendingCount} tone={warningAppointments.length ? 'rose' : 'blue'} />
+            </section>
+
+            <section className="grid gap-3 border-t border-blue-100 bg-white px-6 py-5 lg:grid-cols-[180px_220px_220px_1fr]">
+                <Field label="Lọc theo ngày" type="date" value={filters.date} onChange={value => setFilters(current => ({ ...current, date: value }))} />
+                {isFrontDesk && (
+                    <Select label="Bác sĩ" value={filters.dentistId} onChange={value => setFilters(current => ({ ...current, dentistId: value }))}>
+                        <option value="all">Tất cả bác sĩ</option>
+                        {dentists.map(dentist => <option key={dentist.id} value={dentist.id}>{dentist.fullName}</option>)}
+                    </Select>
+                )}
+                <Select label="Trạng thái" value={filters.status} onChange={value => setFilters(current => ({ ...current, status: value }))}>
+                    <option value="all">Tất cả trạng thái</option>
+                    {workflowStatusSteps.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                    <option value="cancelled">Đã hủy</option>
+                    <option value="no_show">Không đến</option>
+                </Select>
+                <div className="flex items-end gap-2">
+                    <button type="button" onClick={() => setFilters({ date: todayValue(), dentistId: 'all', status: 'all' })} className="rounded-xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-700 hover:bg-blue-100">
+                        Hôm nay
+                    </button>
+                    <button type="button" onClick={() => setFilters({ date: '', dentistId: 'all', status: 'all' })} className="rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-black text-slate-600 hover:bg-blue-50">
+                        Xóa lọc
+                    </button>
+                </div>
+            </section>
+
+            {warningAppointments.length > 0 && (
+                <section className="mx-6 mb-6 rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+                    <p className="text-sm font-black uppercase text-amber-700">Cảnh báo lịch hẹn</p>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {warningAppointments.slice(0, 4).map(appointment => (
+                            <button key={appointment.id} type="button" onClick={() => setDetailAppt(appointment)} className="rounded-xl bg-white p-3 text-left text-sm shadow-sm hover:bg-amber-50">
+                                <span className="font-black text-blue-950">#{appointment.id} · {appointment.patientName}</span>
+                                <span className="mt-1 block font-bold text-amber-700">{appointment.warnings[0]?.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </section>
+            )}
+
             <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-blue-100">
                     <thead>
@@ -451,7 +561,12 @@ export default function AppointmentsTab() {
                                             ) : <span className="text-sm font-semibold text-slate-700">{appointment.dentistName || 'Chưa phân công'}</span>}
                                         </td>
                                     )}
-                                    <td className="px-6 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span></td>
+                                    <td className="px-6 py-4">
+                                        <span className={`rounded-full px-3 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span>
+                                        {appointment.warnings?.length > 0 && (
+                                            <p className="mt-2 text-xs font-black text-amber-700">{appointment.warnings[0].label}</p>
+                                        )}
+                                    </td>
                                     <td className="px-6 py-4">
                                         <div className="flex justify-end gap-2">
                                             {isFrontDesk && ['pending', 'confirmed'].includes(appointment.status) && (
@@ -514,6 +629,15 @@ export default function AppointmentsTab() {
                                 <Field label="Ngày mới" type="date" min={todayValue()} value={rescheduleForm.appointmentDate} onChange={value => setRescheduleForm({ ...rescheduleForm, appointmentDate: value })} required />
                                 <Field label="Giờ mới" type="time" value={rescheduleForm.appointmentTime} onChange={value => setRescheduleForm({ ...rescheduleForm, appointmentTime: value })} required />
                             </div>
+                            <QuickRescheduleButtons
+                                currentDate={rescheduleForm.appointmentDate}
+                                currentTime={rescheduleForm.appointmentTime}
+                                onApply={(nextDate, nextTime) => setRescheduleForm(current => ({
+                                    ...current,
+                                    appointmentDate: nextDate,
+                                    appointmentTime: nextTime
+                                }))}
+                            />
                             <div className="mt-4 space-y-4">
                                 <Textarea label="Lý do dời lịch" value={rescheduleForm.reason} onChange={value => setRescheduleForm({ ...rescheduleForm, reason: value })} />
                                 <Textarea label="Ghi chú nội bộ" value={rescheduleForm.note} onChange={value => setRescheduleForm({ ...rescheduleForm, note: value })} />
@@ -546,7 +670,14 @@ export default function AppointmentsTab() {
                                         <Textarea label="Lý do khám" value={recordForm.chiefComplaint} onChange={value => setRecordForm({ ...recordForm, chiefComplaint: value })} />
                                         <Textarea label="Chẩn đoán" required value={recordForm.diagnosis} onChange={value => setRecordForm({ ...recordForm, diagnosis: value })} />
                                     </div>
+                                    <ToothChart selected={recordForm.toothPositions} onToggle={toggleTooth} />
                                     <Textarea label="Kế hoạch điều trị" value={recordForm.treatmentPlan} onChange={value => setRecordForm({ ...recordForm, treatmentPlan: value })} />
+                                    <TreatmentSessions
+                                        sessions={recordForm.treatmentSessions}
+                                        onAdd={addTreatmentSession}
+                                        onUpdate={updateTreatmentSession}
+                                        onRemove={removeTreatmentSession}
+                                    />
                                     <Textarea label="Thủ thuật đã thực hiện" value={recordForm.procedures} onChange={value => setRecordForm({ ...recordForm, procedures: value })} />
                                     <div className="grid gap-4 sm:grid-cols-2">
                                         <Textarea label="Đơn thuốc" value={recordForm.prescription} onChange={value => setRecordForm({ ...recordForm, prescription: value })} />
@@ -557,6 +688,28 @@ export default function AppointmentsTab() {
                                     <div>
                                         <p className="text-xs font-black uppercase text-slate-400">Dịch vụ</p>
                                         <p className="mt-2 text-sm font-black leading-6 text-blue-950">{selectedAppt.serviceNames || 'Chưa có dịch vụ'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-black uppercase text-slate-400">Lịch sử khám cũ</p>
+                                        {loadingHistory ? (
+                                            <p className="mt-2 text-sm font-bold text-slate-500">Đang tải...</p>
+                                        ) : patientRecordHistory.length === 0 ? (
+                                            <p className="mt-2 text-sm font-bold text-slate-500">Chưa có hồ sơ trước đó.</p>
+                                        ) : (
+                                            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+                                                {patientRecordHistory.slice(0, 5).map(record => (
+                                                    <article key={record.id} className="rounded-xl bg-white p-3 text-sm">
+                                                        <p className="font-black text-blue-950">{record.diagnosis}</p>
+                                                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                                                            {record.appointmentDate ? new Date(record.appointmentDate).toLocaleDateString('vi-VN') : ''} · {record.dentistName}
+                                                        </p>
+                                                        {record.toothPositions?.length > 0 && (
+                                                            <p className="mt-1 text-xs font-bold text-blue-700">Răng: {record.toothPositions.join(', ')}</p>
+                                                        )}
+                                                    </article>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="grid gap-4">
                                         <Field label="Ngày tái khám" type="date" value={recordForm.nextAppointmentDate} onChange={value => setRecordForm({ ...recordForm, nextAppointmentDate: value })} />
@@ -661,6 +814,130 @@ function Textarea({ label, value, onChange, ...props }) {
     );
 }
 
+function SummaryPill({ label, value, tone = 'blue' }) {
+    const toneClass = tone === 'rose' ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-800';
+    return (
+        <div className={`rounded-2xl p-4 ${toneClass}`}>
+            <p className="text-2xl font-black">{value}</p>
+            <p className="mt-1 text-xs font-black uppercase opacity-80">{label}</p>
+        </div>
+    );
+}
+
+function QuickRescheduleButtons({ currentDate, currentTime, onApply }) {
+    const applyOffset = (minutesToAdd) => {
+        if (!currentDate || !currentTime) return;
+        const date = new Date(`${currentDate}T${currentTime}:00`);
+        date.setMinutes(date.getMinutes() + minutesToAdd);
+        onApply(todayValueFromDate(date), String(date.toTimeString()).slice(0, 5));
+    };
+
+    const applyTomorrow = () => {
+        if (!currentDate || !currentTime) return;
+        const date = new Date(`${currentDate}T${currentTime}:00`);
+        date.setDate(date.getDate() + 1);
+        onApply(todayValueFromDate(date), String(date.toTimeString()).slice(0, 5));
+    };
+
+    return (
+        <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => applyOffset(30)} className="rounded-full bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100">+30 phút</button>
+            <button type="button" onClick={() => applyOffset(60)} className="rounded-full bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100">+1 giờ</button>
+            <button type="button" onClick={applyTomorrow} className="rounded-full bg-cyan-50 px-3 py-2 text-xs font-black text-cyan-700 hover:bg-cyan-100">Ngày mai cùng giờ</button>
+        </div>
+    );
+}
+
+function todayValueFromDate(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function ToothChart({ selected, onToggle }) {
+    return (
+        <div className="rounded-2xl border border-blue-100 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+                <div>
+                    <p className="font-black text-blue-950">Vị trí răng điều trị</p>
+                    <p className="mt-1 text-sm text-slate-500">Chọn theo số răng FDI.</p>
+                </div>
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{selected.length} răng</span>
+            </div>
+            <div className="mt-4 grid grid-cols-8 gap-2">
+                {toothNumbers.map((tooth) => {
+                    const active = selected.includes(tooth);
+                    return (
+                        <button
+                            key={tooth}
+                            type="button"
+                            onClick={() => onToggle(tooth)}
+                            className={`aspect-square rounded-xl border text-xs font-black transition ${active ? 'border-blue-700 bg-blue-700 text-white' : 'border-blue-100 bg-blue-50 text-blue-800 hover:bg-white'}`}
+                        >
+                            {tooth}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function TreatmentSessions({ sessions, onAdd, onUpdate, onRemove }) {
+    return (
+        <div className="rounded-2xl border border-blue-100 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+                <div>
+                    <p className="font-black text-blue-950">Kế hoạch điều trị nhiều buổi</p>
+                    <p className="mt-1 text-sm text-slate-500">Dùng cho implant, niềng, điều trị tủy hoặc phục hình.</p>
+                </div>
+                <button type="button" onClick={onAdd} className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100">Thêm buổi</button>
+            </div>
+            <div className="mt-4 space-y-3">
+                {sessions.length === 0 ? (
+                    <p className="rounded-xl bg-slate-50 p-3 text-sm font-bold text-slate-500">Chưa có buổi điều trị nào.</p>
+                ) : sessions.map((session, index) => (
+                    <div key={index} className="grid gap-3 rounded-xl bg-blue-50/50 p-3 md:grid-cols-[1fr_150px_150px_auto]">
+                        <input value={session.title || ''} onChange={event => onUpdate(index, 'title', event.target.value)} placeholder={`Buổi ${index + 1}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                        <input type="date" value={session.plannedDate || ''} onChange={event => onUpdate(index, 'plannedDate', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                        <select value={session.status || 'planned'} onChange={event => onUpdate(index, 'status', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500">
+                            <option value="planned">Dự kiến</option>
+                            <option value="done">Đã làm</option>
+                            <option value="skipped">Hoãn</option>
+                        </select>
+                        <button type="button" onClick={() => onRemove(index)} className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-black text-rose-600 hover:bg-rose-100">Xóa</button>
+                        <input value={session.note || ''} onChange={event => onUpdate(index, 'note', event.target.value)} placeholder="Ghi chú buổi điều trị" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 md:col-span-4" />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function StatusTimeline({ history }) {
+    return (
+        <div className="rounded-2xl border border-blue-100 bg-white p-5">
+            <p className="font-black text-blue-950">Timeline trạng thái</p>
+            {history.length === 0 ? (
+                <p className="mt-3 text-sm font-bold text-slate-500">Chưa có lịch sử trạng thái.</p>
+            ) : (
+                <div className="mt-4 space-y-3">
+                    {history.map((item) => {
+                        const [label] = getStatusMeta(item.newStatus);
+                        return (
+                            <div key={item.id} className="border-l-2 border-blue-200 pl-4">
+                                <p className="text-sm font-black text-blue-950">{label}</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">
+                                    {item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : ''} · {item.changedByName || 'Hệ thống'}
+                                </p>
+                                {(item.reason || item.note) && <p className="mt-1 text-sm text-slate-600">{item.reason || item.note}</p>}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, onCancel, onCreateInvoice, onStatusChange, onReschedule, onOpenRecord }) {
     const [statusLabel, statusClass] = getStatusMeta(appointment.status);
     const currentStepIndex = workflowStatusSteps.findIndex(([key]) => key === appointment.status);
@@ -721,6 +998,16 @@ function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, 
                                 <span className={`rounded-full px-3 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span>
                             </div>
 
+                            {appointment.warnings?.length > 0 && (
+                                <div className="mt-4 space-y-2">
+                                    {appointment.warnings.map((warning) => (
+                                        <p key={warning.type} className="rounded-xl bg-amber-50 p-3 text-sm font-black text-amber-700">
+                                            {warning.label}
+                                        </p>
+                                    ))}
+                                </div>
+                            )}
+
                             <div className="mt-5 grid gap-3 sm:grid-cols-3">
                                 {workflowStatusSteps.map(([key, label], index) => {
                                     const done = !isCancelled && currentStepIndex >= index;
@@ -741,6 +1028,8 @@ function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, 
                                 </p>
                             )}
                         </div>
+
+                        <StatusTimeline history={appointment.statusHistory || []} />
 
                         <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5">
                             <p className="font-black text-blue-950">Ghi chú</p>

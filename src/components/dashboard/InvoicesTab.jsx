@@ -23,6 +23,8 @@ export default function InvoicesTab() {
     const [paymentAmounts, setPaymentAmounts] = useState({});
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedInvoice, setSelectedInvoice] = useState(null);
+    const [loadingInvoiceDetail, setLoadingInvoiceDetail] = useState(false);
 
     const fetchInvoices = async () => {
         try {
@@ -52,6 +54,19 @@ export default function InvoicesTab() {
             fetchInvoices();
         } catch (err) {
             toast.error(err.response?.data?.message || 'Không thể xác nhận thanh toán.');
+        }
+    };
+
+    const openInvoiceDetail = async (invoice) => {
+        try {
+            setLoadingInvoiceDetail(true);
+            const res = await api.get(`/invoices/${invoice.id}`);
+            setSelectedInvoice(res.data.data || invoice);
+        } catch {
+            setSelectedInvoice(invoice);
+            toast.error('Không thể tải chi tiết mới nhất, đang hiển thị dữ liệu trong bảng.');
+        } finally {
+            setLoadingInvoiceDetail(false);
         }
     };
 
@@ -211,6 +226,9 @@ export default function InvoicesTab() {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
+                                        <button onClick={() => openInvoiceDetail(invoice)} className="mr-2 rounded-xl border border-blue-100 bg-white px-4 py-2 text-xs font-black text-blue-700 hover:bg-blue-50">
+                                            Chi tiết
+                                        </button>
                                         {['unpaid', 'partial'].includes(invoice.status) ? (
                                             <button onClick={() => handlePay(invoice.id)} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white hover:bg-blue-800">
                                                 Xác nhận thu tiền
@@ -235,6 +253,14 @@ export default function InvoicesTab() {
                     <p className="text-2xl font-black text-rose-700">{formatCurrency(pendingAmount)}</p>
                 </div>
             </Panel>
+
+            {selectedInvoice && (
+                <InvoiceDetailModal
+                    invoice={selectedInvoice}
+                    loading={loadingInvoiceDetail}
+                    onClose={() => setSelectedInvoice(null)}
+                />
+            )}
         </div>
     );
 }
@@ -255,6 +281,99 @@ function SummaryCard({ label, value, tone, compact = false }) {
         <div className={`rounded-2xl p-5 ${toneClass}`}>
             <p className={`${compact ? 'text-xl' : 'text-3xl'} font-black`}>{value}</p>
             <p className="mt-1 text-sm font-black uppercase opacity-80">{label}</p>
+        </div>
+    );
+}
+
+function InvoiceDetailModal({ invoice, loading, onClose }) {
+    const handlePrint = () => {
+        window.print();
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:p-6 print:static print:bg-white print:p-0" onMouseDown={onClose} role="presentation">
+            <div className="my-4 w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl print:my-0 print:max-w-none print:rounded-none print:shadow-none" onMouseDown={(event) => event.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-blue-50/60 p-6 print:bg-white">
+                    <div>
+                        <p className="text-sm font-black uppercase text-blue-700">Chi tiết hóa đơn</p>
+                        <h3 className="mt-1 text-2xl font-black text-blue-950">INV-{invoice.id}</h3>
+                        <p className="mt-2 text-sm font-semibold text-slate-500">{invoice.patientName} · {invoice.patientPhone || invoice.patientEmail || ''}</p>
+                    </div>
+                    <div className="flex gap-2 print:hidden">
+                        <button type="button" onClick={handlePrint} className="rounded-xl bg-blue-700 px-4 py-2 text-sm font-black text-white hover:bg-blue-800">In/PDF</button>
+                        <button type="button" onClick={onClose} className="rounded-xl border border-blue-100 bg-white px-4 py-2 text-sm font-black text-slate-600 hover:bg-blue-50">Đóng</button>
+                    </div>
+                </div>
+
+                <div className="space-y-5 p-6">
+                    {loading && <p className="rounded-xl bg-blue-50 p-3 text-sm font-bold text-blue-700">Đang tải chi tiết mới nhất...</p>}
+
+                    <div className="grid gap-4 sm:grid-cols-3">
+                        <Info label="Ngày khám" value={invoice.appointmentDate ? new Date(invoice.appointmentDate).toLocaleDateString('vi-VN') : '-'} />
+                        <Info label="Bác sĩ" value={invoice.dentistName || '-'} />
+                        <Info label="Trạng thái" value={invoice.status} />
+                    </div>
+
+                    <section className="rounded-2xl border border-blue-100">
+                        <div className="border-b border-blue-100 px-4 py-3">
+                            <p className="font-black text-blue-950">Dịch vụ tính tiền</p>
+                        </div>
+                        <div className="divide-y divide-blue-50">
+                            {(invoice.items || []).map((item) => (
+                                <div key={item.id} className="grid grid-cols-[1fr_80px_130px] gap-3 px-4 py-3 text-sm">
+                                    <span className="font-bold text-slate-700">{item.description}</span>
+                                    <span className="text-center text-slate-500">x{item.quantity}</span>
+                                    <span className="text-right font-black text-blue-700">{formatCurrency(item.totalPrice)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section className="grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2">
+                        <Meta label="Tạm tính" value={formatCurrency(invoice.subtotalAmount)} />
+                        <Meta label="Giảm giá" value={formatCurrency(invoice.discountAmount)} />
+                        <Meta label="Đã thu" value={formatCurrency(invoice.paidAmount)} />
+                        <Meta label="Còn lại" value={formatCurrency(invoice.outstandingAmount)} strong />
+                    </section>
+
+                    <section className="rounded-2xl border border-blue-100 p-4">
+                        <p className="font-black text-blue-950">Lịch sử thanh toán</p>
+                        {(invoice.payments || []).length === 0 ? (
+                            <p className="mt-3 text-sm font-bold text-slate-500">Chưa ghi nhận thanh toán.</p>
+                        ) : (
+                            <div className="mt-3 space-y-2">
+                                {invoice.payments.map((payment) => (
+                                    <div key={payment.id} className="flex items-center justify-between gap-4 rounded-xl bg-blue-50/60 px-4 py-3 text-sm">
+                                        <div>
+                                            <p className="font-black text-blue-950">{paymentLabels[payment.paymentMethod] || payment.paymentMethod}</p>
+                                            <p className="text-xs font-semibold text-slate-500">{payment.createdAt ? new Date(payment.createdAt).toLocaleString('vi-VN') : ''}</p>
+                                        </div>
+                                        <p className="font-black text-emerald-700">{formatCurrency(payment.amount)}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function Info({ label, value }) {
+    return (
+        <div className="rounded-2xl border border-blue-100 p-4">
+            <p className="text-xs font-black uppercase text-slate-400">{label}</p>
+            <p className="mt-2 font-black text-blue-950">{value}</p>
+        </div>
+    );
+}
+
+function Meta({ label, value, strong = false }) {
+    return (
+        <div className="flex items-center justify-between gap-4">
+            <span className="text-sm font-bold text-slate-500">{label}</span>
+            <span className={`${strong ? 'text-xl text-rose-700' : 'text-base text-blue-950'} font-black`}>{value}</span>
         </div>
     );
 }

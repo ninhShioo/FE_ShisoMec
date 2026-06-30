@@ -4,6 +4,55 @@ import toast from 'react-hot-toast';
 
 const emptyPromotion = { id: null, name: '', description: '', discountPercent: '', startDate: '', endDate: '', isActive: true };
 
+const getDateOnly = (value) => {
+    if (!value) return '';
+    return String(value).split('T')[0];
+};
+
+const getPromotionStatus = (promo) => {
+    if (promo.effectiveStatus) return promo.effectiveStatus;
+
+    const isManuallyActive = promo.isActive === 1 || promo.isActive === true;
+    if (!isManuallyActive) return 'inactive';
+
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const startDate = getDateOnly(promo.startDate);
+    const endDate = getDateOnly(promo.endDate);
+
+    if (startDate && startDate > today) return 'upcoming';
+    if (endDate && endDate < today) return 'expired';
+    return 'active';
+};
+
+const statusMeta = {
+    active: {
+        label: 'Hoạt động',
+        className: 'text-emerald-700',
+        dotClassName: 'bg-emerald-500'
+    },
+    upcoming: {
+        label: 'Sắp diễn ra',
+        className: 'text-blue-700',
+        dotClassName: 'bg-blue-500'
+    },
+    expired: {
+        label: 'Hết hạn',
+        className: 'text-amber-700',
+        dotClassName: 'bg-amber-500'
+    },
+    inactive: {
+        label: 'Đã tắt',
+        className: 'text-slate-500',
+        dotClassName: 'bg-slate-400'
+    }
+};
+
+const formatDate = (value) => {
+    const dateOnly = getDateOnly(value);
+    if (!dateOnly) return 'Không giới hạn';
+    return new Date(dateOnly).toLocaleDateString('vi-VN');
+};
+
 export default function PromotionsTab() {
     const [promotions, setPromotions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -46,8 +95,8 @@ export default function PromotionsTab() {
             name: promo.name || '',
             description: promo.description || '',
             discountPercent: promo.discountPercent || '',
-            startDate: promo.startDate ? promo.startDate.split('T')[0] : '',
-            endDate: promo.endDate ? promo.endDate.split('T')[0] : '',
+            startDate: getDateOnly(promo.startDate),
+            endDate: getDateOnly(promo.endDate),
             isActive: promo.isActive === 1 || promo.isActive === true
         });
         setIsEditing(true);
@@ -56,6 +105,11 @@ export default function PromotionsTab() {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
+
+        if (formData.startDate && formData.endDate && formData.startDate > formData.endDate) {
+            toast.error('Ngày kết thúc không được trước ngày bắt đầu.');
+            return;
+        }
 
         try {
             if (isEditing) {
@@ -147,6 +201,8 @@ export default function PromotionsTab() {
                                 <tr><td colSpan="5" className="p-8 text-center text-sm font-bold text-slate-500">Chưa có khuyến mãi nào.</td></tr>
                             ) : promotions.map(promo => {
                                 const isActive = promo.isActive === 1 || promo.isActive === true;
+                                const status = getPromotionStatus(promo);
+                                const meta = statusMeta[status] || statusMeta.inactive;
                                 return (
                                     <tr key={promo.id} className="hover:bg-blue-50/40">
                                         <td className="px-6 py-4">
@@ -155,13 +211,13 @@ export default function PromotionsTab() {
                                         </td>
                                         <td className="px-6 py-4 text-lg font-black text-blue-700">{promo.discountPercent}%</td>
                                         <td className="px-6 py-4 text-sm text-slate-600">
-                                            {promo.startDate ? new Date(promo.startDate).toLocaleDateString('vi-VN') : 'Không giới hạn'} - {promo.endDate ? new Date(promo.endDate).toLocaleDateString('vi-VN') : 'Không giới hạn'}
+                                            {formatDate(promo.startDate)} - {formatDate(promo.endDate)}
                                         </td>
                                         <td className="px-6 py-4">
-                                            {isActive
-                                                ? <span className="inline-flex items-center gap-2 text-sm font-black text-emerald-700"><span className="h-2 w-2 rounded-full bg-emerald-500" />Hoạt động</span>
-                                                : <span className="inline-flex items-center gap-2 text-sm font-black text-slate-500"><span className="h-2 w-2 rounded-full bg-slate-400" />Đã tắt</span>
-                                            }
+                                            <span className={`inline-flex items-center gap-2 text-sm font-black ${meta.className}`}>
+                                                <span className={`h-2 w-2 rounded-full ${meta.dotClassName}`} />
+                                                {promo.effectiveLabel || meta.label}
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <button onClick={() => openEditForm(promo)} className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700 hover:bg-blue-100">Sửa</button>

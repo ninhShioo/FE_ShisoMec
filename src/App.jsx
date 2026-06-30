@@ -20,6 +20,7 @@ import NotificationBell from './components/NotificationBell';
 import api from './services/api';
 import heroImage from './assets/hero-pastel-dental.png';
 import logoImage from './assets/phenikaa-dental-logo.svg';
+import { applyTheme, getStoredTheme } from './utils/theme';
 
 const formatCurrency = (value) => {
   const amount = Number(value || 0);
@@ -153,7 +154,9 @@ function Home() {
         }
 
         if (settingsResult.status === 'fulfilled') {
-          setPublicSettings(settingsResult.value.data?.data || null);
+          const nextSettings = settingsResult.value.data?.data || null;
+          setPublicSettings(nextSettings);
+          if (nextSettings?.theme) applyTheme(nextSettings.theme);
         }
       } catch (error) {
         console.error('Khong the tai du lieu trang chu:', error);
@@ -181,17 +184,21 @@ function Home() {
     return (homeReviews.length ? homeReviews : fallbackReviews).slice(0, 3);
   }, [homeReviews]);
 
-  const primaryAction = isStaff
-    ? { to: '/dashboard', label: 'Mở khu làm việc' }
-    : { to: user ? '/book-appointment' : '/login', label: user ? 'Đặt lịch ngay' : 'Đăng nhập đặt lịch' };
-
   const clinicInfo = publicSettings || {
     phone: '0869 800 318',
     email: 'contact@phenikaadental.vn',
     address: 'Phenikaa Dental',
     openingHours: '08:00 - 20:00',
+    maintenanceMode: false,
     allowOnlineBooking: true
   };
+  const bookingEnabled = clinicInfo.allowOnlineBooking && !clinicInfo.maintenanceMode;
+  const telHref = `tel:${String(clinicInfo.phone || '').replace(/[^\d+]/g, '')}`;
+  const primaryAction = isStaff
+    ? { to: '/dashboard', label: 'Mở khu làm việc' }
+    : bookingEnabled
+      ? { to: user ? '/book-appointment' : '/login', label: user ? 'Đặt lịch ngay' : 'Đăng nhập đặt lịch' }
+      : { href: telHref, label: 'Gọi hotline' };
 
   const stats = [
     ['15+', 'Năm kinh nghiệm', 'Trong lĩnh vực nha khoa'],
@@ -230,9 +237,15 @@ function Home() {
             </div>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link to={primaryAction.to} className="rounded-lg bg-blue-700 px-6 py-3.5 text-center text-sm font-black uppercase text-white shadow-xl shadow-blue-200 hover:bg-blue-800">
-                {primaryAction.label}
-              </Link>
+              {primaryAction.to ? (
+                <Link to={primaryAction.to} className="rounded-lg bg-blue-700 px-6 py-3.5 text-center text-sm font-black uppercase text-white shadow-xl shadow-blue-200 hover:bg-blue-800">
+                  {primaryAction.label}
+                </Link>
+              ) : (
+                <a href={primaryAction.href} className="rounded-lg bg-blue-700 px-6 py-3.5 text-center text-sm font-black uppercase text-white shadow-xl shadow-blue-200 hover:bg-blue-800">
+                  {primaryAction.label}
+                </a>
+              )}
               <Link to="/services" className="rounded-lg border border-blue-300 bg-white px-6 py-3.5 text-center text-sm font-black uppercase text-blue-700 shadow-sm hover:bg-blue-50">
                 Xem dịch vụ
               </Link>
@@ -409,14 +422,39 @@ function Home() {
                 <textarea className="mt-2 min-h-24 w-full rounded-lg border border-slate-200 px-4 py-3 outline-none focus:border-blue-500" placeholder="Nhu cầu khám hoặc tình trạng hiện tại" />
               </label>
             </div>
-            <Link to="/book-appointment" className="mt-5 block rounded-lg bg-blue-700 px-5 py-3.5 text-center text-sm font-black uppercase text-white hover:bg-blue-800">
-              Đặt lịch ngay
-            </Link>
+            {bookingEnabled ? (
+              <Link to="/book-appointment" className="mt-5 block rounded-lg bg-blue-700 px-5 py-3.5 text-center text-sm font-black uppercase text-white hover:bg-blue-800">
+                Đặt lịch ngay
+              </Link>
+            ) : (
+              <a href={telHref} className="mt-5 block rounded-lg bg-blue-700 px-5 py-3.5 text-center text-sm font-black uppercase text-white hover:bg-blue-800">
+                Liên hệ hotline
+              </a>
+            )}
           </div>
         </div>
       </section>
     </main>
   );
+}
+
+function ThemeBootstrap() {
+  useEffect(() => {
+    applyTheme(getStoredTheme());
+
+    let mounted = true;
+    api.get('/settings/public')
+      .then((res) => {
+        if (mounted) applyTheme(res.data?.data?.theme);
+      })
+      .catch(() => {});
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return null;
 }
 
 function App() {
@@ -425,6 +463,7 @@ function App() {
       <Router>
         <div className="min-h-screen bg-slate-50 relative">
           <Toaster position="top-right" />
+          <ThemeBootstrap />
           <Navbar />
           <Routes>
             <Route path="/" element={<Home />} />

@@ -4,6 +4,13 @@ import { AuthContext } from '../context/auth-context';
 import GoogleAuthButton from '../components/GoogleAuthButton';
 import AuthShell from '../components/AuthShell';
 
+const getAuthErrorMessage = (err, fallback) => {
+    if (err.response?.data?.message) return err.response.data.message;
+    if (err.code === 'ECONNABORTED') return 'Backend phản hồi quá lâu, vui lòng thử lại.';
+    if (err.request) return 'Không kết nối được backend. Hãy chạy backend ở http://localhost:8080 và kiểm tra VITE_API_URL.';
+    return fallback;
+};
+
 export default function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -21,7 +28,7 @@ export default function Login() {
             await login(email, password);
             navigate(redirectPath, { replace: true });
         } catch (err) {
-            setError(err.response?.data?.message || 'Không thể đăng nhập. Vui lòng kiểm tra email và mật khẩu.');
+            setError(getAuthErrorMessage(err, 'Không thể đăng nhập. Vui lòng kiểm tra email và mật khẩu.'));
         }
     };
 
@@ -32,7 +39,7 @@ export default function Login() {
             await googleLogin(idToken);
             navigate(redirectPath, { replace: true });
         } catch (err) {
-            setError(err.response?.data?.message || 'Không thể đăng nhập bằng Google.');
+            setError(getAuthErrorMessage(err, 'Không thể đăng nhập bằng Google.'));
         }
     }, [googleLogin, navigate, redirectPath]);
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/auth-context';
 import AppointmentsTab from '../components/dashboard/AppointmentsTab';
 import ServicesTab from '../components/dashboard/ServicesTab';
@@ -48,6 +48,7 @@ const roleWorkflows = {
 export default function Dashboard() {
     const { user, loading: authLoading } = useContext(AuthContext);
     const navigate = useNavigate();
+    const location = useLocation();
     const [activeTab, setActiveTab] = useState('appointments');
 
     const tabs = useMemo(() => {
@@ -79,9 +80,11 @@ export default function Dashboard() {
         }
 
         if (!authLoading && user) {
-            setActiveTab(user.role === 'admin' ? 'analytics' : 'appointments');
+            const requestedTab = new URLSearchParams(location.search).get('tab');
+            const availableTabs = tabs.map(([key]) => key);
+            setActiveTab(availableTabs.includes(requestedTab) ? requestedTab : (user.role === 'admin' ? 'analytics' : 'appointments'));
         }
-    }, [user, authLoading, navigate]);
+    }, [user, authLoading, navigate, location.search, tabs]);
 
     useEffect(() => {
         if (tabs.length > 0 && !tabs.some(([key]) => key === activeTab)) {

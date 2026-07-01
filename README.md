@@ -1,16 +1,83 @@
-# React + Vite
+# Phenikaa Dental Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend React/Vite của đồ án DOAN1, nằm độc lập trong thư mục `frontend/`.
 
-Currently, two official plugins are available:
+## Công nghệ
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 19
+- Vite 8
+- React Router
+- Axios
+- Socket.IO Client
+- Tailwind CSS 4
+- Recharts
 
-## React Compiler
+## Cài đặt
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+cd frontend
+npm install
+```
 
-## Expanding the ESLint configuration
+Tạo file `.env` từ `.env.example`:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```env
+VITE_API_URL=http://localhost:8080/api
+VITE_SOCKET_URL=http://localhost:8080
+VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id.apps.googleusercontent.com
+```
+
+`VITE_GOOGLE_CLIENT_ID` phải trùng với `GOOGLE_CLIENT_ID` ở `backend/.env` nếu bật đăng nhập Google.
+
+## Chạy frontend
+
+```bash
+npm run dev
+```
+
+Mặc định Vite chạy tại:
+
+```text
+http://localhost:5173
+```
+
+Backend cần chạy song song tại:
+
+```text
+http://localhost:8080
+```
+
+## Kiểm tra
+
+```bash
+npm run lint
+npm run build
+```
+
+Build output nằm trong `frontend/dist/`.
+
+## Màn hình chính
+
+- Trang chủ public Phenikaa Dental.
+- Đăng nhập/đăng ký thường và Google.
+- Đặt lịch khám theo dịch vụ, bác sĩ, slot trống.
+- Profile bệnh nhân: lịch hẹn, hồ sơ, hóa đơn, đánh giá.
+- Dashboard theo role:
+  - Admin: tổng quan, dịch vụ, lịch, lịch làm việc, khuyến mãi, đánh giá, tài khoản, cài đặt.
+  - Staff: lịch hẹn, lịch làm việc, hóa đơn, thông báo.
+  - Dentist: lịch khám, ghi hồ sơ, đăng ký nghỉ, thông báo.
+- Chat realtime khách hàng/nhân viên.
+- Notification realtime và lịch sử thông báo theo loại.
+
+## Theme giao diện
+
+Màu giao diện được điều khiển qua `Settings` ở dashboard admin. Frontend đọc theme từ `/settings/public` và áp vào `html[data-theme]`.
+
+Các palette hiện có:
+
+- Pastel nha khoa
+- Mint dịu
+- Ocean xanh
+- Lavender sạch
+- Rose ấm
+- Navy chuyên nghiệp

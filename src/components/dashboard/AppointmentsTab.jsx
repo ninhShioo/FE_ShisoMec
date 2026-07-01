@@ -1,7 +1,9 @@
-import { useState, useEffect, useContext, useCallback } from 'react';
+import { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { AuthContext } from '../../context/auth-context';
+import { useLocation } from 'react-router-dom';
+import { getHighlightClass } from '../../utils/notificationNavigation';
 
 const todayValue = () => {
     const now = new Date();
@@ -49,8 +51,17 @@ const toothNumbers = [
 
 export default function AppointmentsTab() {
     const { user } = useContext(AuthContext);
+    const location = useLocation();
     const isFrontDesk = user.role === 'admin' || user.role === 'staff';
     const isDentist = user.role === 'dentist';
+    const queryHighlight = useMemo(() => {
+        const params = new URLSearchParams(location.search);
+        return {
+            type: params.get('highlightType'),
+            id: params.get('highlightId')
+        };
+    }, [location.search]);
+    const [highlight, setHighlight] = useState(queryHighlight);
 
     const [appointments, setAppointments] = useState([]);
     const [dentists, setDentists] = useState([]);
@@ -66,8 +77,26 @@ export default function AppointmentsTab() {
     const [recordForm, setRecordForm] = useState(emptyRecordForm);
     const [rescheduleAppt, setRescheduleAppt] = useState(null);
     const [rescheduleForm, setRescheduleForm] = useState({ appointmentDate: '', appointmentTime: '', reason: '', note: '' });
-    const [filters, setFilters] = useState({ date: '', dentistId: 'all', status: 'all' });
+    const [filters, setFilters] = useState({ date: '', dentistId: 'all', status: 'all', sort: 'date_desc' });
     const [patientRecordHistory, setPatientRecordHistory] = useState([]);
+
+    useEffect(() => {
+        setHighlight(queryHighlight);
+        if (!queryHighlight.type || !queryHighlight.id) return undefined;
+
+        const timer = window.setTimeout(() => setHighlight({ type: null, id: null }), 4200);
+        return () => window.clearTimeout(timer);
+    }, [queryHighlight]);
+
+    useEffect(() => {
+        if (loading || highlight.type !== 'appointment' || !highlight.id) return;
+
+        const timer = window.setTimeout(() => {
+            document.getElementById(`appointment-row-${highlight.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 120);
+
+        return () => window.clearTimeout(timer);
+    }, [loading, highlight.type, highlight.id]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [uploadingFiles, setUploadingFiles] = useState(false);
     const [createForm, setCreateForm] = useState({
@@ -85,6 +114,7 @@ export default function AppointmentsTab() {
             const params = {};
             if (filters.date) params.date = filters.date;
             if (filters.status !== 'all') params.status = filters.status;
+            if (filters.sort) params.sort = filters.sort;
             if (isFrontDesk && filters.dentistId !== 'all') params.dentistId = filters.dentistId;
 
             const resAppt = await api.get('/appointments', { params });
@@ -357,6 +387,12 @@ export default function AppointmentsTab() {
 
     const submitMedicalRecord = async (event) => {
         event.preventDefault();
+        const minNextAppointmentDate = nextDateValueAfter(selectedAppt?.appointmentDate);
+        if (recordForm.nextAppointmentDate && recordForm.nextAppointmentDate < minNextAppointmentDate) {
+            toast.error('Ngày tái khám phải là lịch tiếp theo, không được là hôm nay hoặc trong quá khứ.');
+            return;
+        }
+
         try {
             await api.post('/records', {
                 appointmentId: selectedAppt.id,
@@ -385,6 +421,7 @@ export default function AppointmentsTab() {
     const warningAppointments = appointments.filter(appointment => appointment.warnings?.length > 0);
     const pendingCount = appointments.filter(appointment => appointment.status === 'pending').length;
     const todayAppointments = appointments.filter(appointment => String(appointment.appointmentDate || '').slice(0, 10) === todayValue()).length;
+    const minNextAppointmentDate = nextDateValueAfter(selectedAppt?.appointmentDate);
 
     return (
         <Panel>
@@ -483,7 +520,7 @@ export default function AppointmentsTab() {
                 <SummaryPill label="Cần chú ý" value={warningAppointments.length || pendingCount} tone={warningAppointments.length ? 'rose' : 'blue'} />
             </section>
 
-            <section className="grid gap-3 border-t border-blue-100 bg-white px-6 py-5 lg:grid-cols-[180px_220px_220px_1fr]">
+            <section className="grid gap-3 border-t border-blue-100 bg-white px-6 py-5 lg:grid-cols-4 xl:grid-cols-[180px_220px_220px_220px_1fr]">
                 <Field label="Lọc theo ngày" type="date" value={filters.date} onChange={value => setFilters(current => ({ ...current, date: value }))} />
                 {isFrontDesk && (
                     <Select label="Bác sĩ" value={filters.dentistId} onChange={value => setFilters(current => ({ ...current, dentistId: value }))}>
@@ -497,11 +534,17 @@ export default function AppointmentsTab() {
                     <option value="cancelled">Đã hủy</option>
                     <option value="no_show">Không đến</option>
                 </Select>
+                <Select label="Thứ tự" value={filters.sort} onChange={value => setFilters(current => ({ ...current, sort: value }))}>
+                    <option value="date_desc">Lịch mới nhất</option>
+                    <option value="date_asc">Lịch sắp tới</option>
+                    <option value="created_desc">Đơn mới tạo</option>
+                    <option value="created_asc">Đơn cũ nhất</option>
+                </Select>
                 <div className="flex items-end gap-2">
-                    <button type="button" onClick={() => setFilters({ date: todayValue(), dentistId: 'all', status: 'all' })} className="rounded-xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-700 hover:bg-blue-100">
+                    <button type="button" onClick={() => setFilters(current => ({ ...current, date: todayValue(), dentistId: 'all', status: 'all' }))} className="rounded-xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-700 hover:bg-blue-100">
                         Hôm nay
                     </button>
-                    <button type="button" onClick={() => setFilters({ date: '', dentistId: 'all', status: 'all' })} className="rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-black text-slate-600 hover:bg-blue-50">
+                    <button type="button" onClick={() => setFilters({ date: '', dentistId: 'all', status: 'all', sort: 'date_desc' })} className="rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-black text-slate-600 hover:bg-blue-50">
                         Xóa lọc
                     </button>
                 </div>
@@ -540,7 +583,11 @@ export default function AppointmentsTab() {
                         ) : appointments.map(appointment => {
                             const [statusLabel, statusClass] = getStatusMeta(appointment.status);
                             return (
-                                <tr key={appointment.id} className="hover:bg-blue-50/40">
+                                <tr
+                                    key={appointment.id}
+                                    id={`appointment-row-${appointment.id}`}
+                                    className={`hover:bg-blue-50/40 ${getHighlightClass(highlight.type === 'appointment' && highlight.id === String(appointment.id))}`}
+                                >
                                     <td className="px-6 py-4 text-sm font-black text-slate-500">#{appointment.id}</td>
                                     <td className="px-6 py-4">
                                         <p className="font-black text-blue-950">{appointment.patientName}</p>
@@ -555,14 +602,14 @@ export default function AppointmentsTab() {
                                         <td className="px-6 py-4">
                                             {['pending', 'confirmed'].includes(appointment.status) ? (
                                                 <select value={selectedDentists[appointment.id] || ''} onChange={event => setSelectedDentists({ ...selectedDentists, [appointment.id]: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500">
-                                                    <option value="">{appointment.dentistName || 'Chọn bác sĩ'}</option>
+                                                    <option value="">Chọn bác sĩ</option>
                                                     {dentists.map(dentist => <option key={dentist.id} value={dentist.id}>{dentist.fullName}</option>)}
                                                 </select>
                                             ) : <span className="text-sm font-semibold text-slate-700">{appointment.dentistName || 'Chưa phân công'}</span>}
                                         </td>
                                     )}
                                     <td className="px-6 py-4">
-                                        <span className={`rounded-full px-3 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span>
+                                        <span className={`inline-flex min-w-[92px] justify-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span>
                                         {appointment.warnings?.length > 0 && (
                                             <p className="mt-2 text-xs font-black text-amber-700">{appointment.warnings[0].label}</p>
                                         )}
@@ -674,6 +721,7 @@ export default function AppointmentsTab() {
                                     <Textarea label="Kế hoạch điều trị" value={recordForm.treatmentPlan} onChange={value => setRecordForm({ ...recordForm, treatmentPlan: value })} />
                                     <TreatmentSessions
                                         sessions={recordForm.treatmentSessions}
+                                        minDate={todayValue()}
                                         onAdd={addTreatmentSession}
                                         onUpdate={updateTreatmentSession}
                                         onRemove={removeTreatmentSession}
@@ -712,7 +760,7 @@ export default function AppointmentsTab() {
                                         )}
                                     </div>
                                     <div className="grid gap-4">
-                                        <Field label="Ngày tái khám" type="date" value={recordForm.nextAppointmentDate} onChange={value => setRecordForm({ ...recordForm, nextAppointmentDate: value })} />
+                                        <Field label="Ngày tái khám" type="date" min={minNextAppointmentDate} value={recordForm.nextAppointmentDate} onChange={value => setRecordForm({ ...recordForm, nextAppointmentDate: value })} />
                                         <Field label="Ghi chú tái khám" value={recordForm.nextAppointmentNote} onChange={value => setRecordForm({ ...recordForm, nextAppointmentNote: value })} />
                                     </div>
                                     <div>
@@ -852,6 +900,15 @@ function todayValueFromDate(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function nextDateValueAfter(value) {
+    const today = todayValue();
+    const baseText = value ? String(value).slice(0, 10) : today;
+    const base = /^\d{4}-\d{2}-\d{2}$/.test(baseText) && baseText > today ? baseText : today;
+    const date = new Date(`${base}T00:00:00`);
+    date.setDate(date.getDate() + 1);
+    return todayValueFromDate(date);
+}
+
 function ToothChart({ selected, onToggle }) {
     return (
         <div className="rounded-2xl border border-blue-100 bg-white p-4">
@@ -881,7 +938,7 @@ function ToothChart({ selected, onToggle }) {
     );
 }
 
-function TreatmentSessions({ sessions, onAdd, onUpdate, onRemove }) {
+function TreatmentSessions({ sessions, minDate, onAdd, onUpdate, onRemove }) {
     return (
         <div className="rounded-2xl border border-blue-100 bg-white p-4">
             <div className="flex items-center justify-between gap-3">
@@ -897,7 +954,7 @@ function TreatmentSessions({ sessions, onAdd, onUpdate, onRemove }) {
                 ) : sessions.map((session, index) => (
                     <div key={index} className="grid gap-3 rounded-xl bg-blue-50/50 p-3 md:grid-cols-[1fr_150px_150px_auto]">
                         <input value={session.title || ''} onChange={event => onUpdate(index, 'title', event.target.value)} placeholder={`Buổi ${index + 1}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500" />
-                        <input type="date" value={session.plannedDate || ''} onChange={event => onUpdate(index, 'plannedDate', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                        <input type="date" min={minDate} value={session.plannedDate || ''} onChange={event => onUpdate(index, 'plannedDate', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500" />
                         <select value={session.status || 'planned'} onChange={event => onUpdate(index, 'status', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500">
                             <option value="planned">Dự kiến</option>
                             <option value="done">Đã làm</option>
@@ -995,7 +1052,7 @@ function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, 
                         <div className="rounded-2xl border border-blue-100 bg-white p-5">
                             <div className="flex items-center justify-between gap-3">
                                 <p className="font-black text-blue-950">Trạng thái</p>
-                                <span className={`rounded-full px-3 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span>
+                                <span className={`inline-flex min-w-[92px] justify-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span>
                             </div>
 
                             {appointment.warnings?.length > 0 && (

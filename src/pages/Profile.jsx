@@ -1,10 +1,17 @@
-import { Fragment, useState, useEffect, useContext, useMemo } from 'react';
+import { Fragment, useState, useEffect, useContext, useMemo, useCallback } from 'react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { AuthContext } from '../context/auth-context';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { getHighlightClass } from '../utils/notificationNavigation';
 
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN') + ' đ';
+
+const getQrImageUrl = (paymentUrl) => (
+    `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data=${encodeURIComponent(paymentUrl)}`
+);
+
+const isInvoicePaid = (invoice) => invoice?.status === 'paid' || Number(invoice?.outstandingAmount || 0) <= 0;
 
 const paymentLabels = {
     cash: 'Tiền mặt',
@@ -18,6 +25,7 @@ const paymentLabels = {
 export default function Profile() {
     const { user, loading: authLoading, refreshUser } = useContext(AuthContext);
     const navigate = useNavigate();
+    const location = useLocation();
     const [appointments, setAppointments] = useState([]);
     const [records, setRecords] = useState([]);
     const [invoices, setInvoices] = useState([]);
@@ -28,10 +36,59 @@ export default function Profile() {
     const [profileForm, setProfileForm] = useState({ fullName: '', phone: '', avatar: '' });
     const [savingProfile, setSavingProfile] = useState(false);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const [vnpayPayment, setVnpayPayment] = useState(null);
+    const [checkingVnpay, setCheckingVnpay] = useState(false);
+    const queryHighlight = useMemo(() => {
+        const params = new URLSearchParams(location.search);
+        return {
+            type: params.get('highlightType'),
+            id: params.get('highlightId')
+        };
+    }, [location.search]);
+    const [highlight, setHighlight] = useState(queryHighlight);
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        if (params.get('method') !== 'vnpay') return;
+
+        if (params.get('payment') === 'success') {
+            toast.success(`Thanh toán VNPay thành công${params.get('invoiceId') ? ` cho hóa đơn INV-${params.get('invoiceId')}` : ''}.`);
+        } else {
+            toast.error('Thanh toán VNPay chưa thành công hoặc đã bị hủy.');
+        }
+
+        navigate('/profile', { replace: true });
+    }, [location.search, navigate]);
 
     useEffect(() => {
         if (!authLoading && !user) navigate('/login');
     }, [user, authLoading, navigate]);
+
+    useEffect(() => {
+        const requestedTab = new URLSearchParams(location.search).get('tab');
+        if (['appointments', 'history', 'invoices'].includes(requestedTab)) {
+            setActiveTab(requestedTab);
+        }
+    }, [location.search]);
+
+    useEffect(() => {
+        setHighlight(queryHighlight);
+        if (!queryHighlight.type || !queryHighlight.id) return undefined;
+
+        const timer = window.setTimeout(() => setHighlight({ type: null, id: null }), 4200);
+        return () => window.clearTimeout(timer);
+    }, [queryHighlight]);
+
+    useEffect(() => {
+        if (loading || !highlight.type || !highlight.id) return;
+
+        const targetPrefix = highlight.type === 'invoice' ? 'profile-invoice-row' : 'profile-appointment-row';
+        const timer = window.setTimeout(() => {
+            document.getElementById(`${targetPrefix}-${highlight.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 120);
+
+        return () => window.clearTimeout(timer);
+    }, [loading, highlight.type, highlight.id, activeTab]);
 
     useEffect(() => {
         if (!user) return;
@@ -94,6 +151,66 @@ export default function Profile() {
         unpaid: ['Chưa thanh toán', 'bg-rose-50 text-rose-700'],
         cancelled: ['Đã hủy', 'bg-slate-100 text-slate-600']
     }[status] || [status, 'bg-slate-100 text-slate-600']);
+
+    const handleVnpayPayment = async (invoice) => {
+        try {
+            const res = await api.post(`/invoices/${invoice.id}/vnpay-url`);
+            const paymentUrl = res.data.data?.paymentUrl;
+            if (!paymentUrl) {
+                toast.error('Không nhận được link thanh toán VNPay.');
+                return;
+            }
+            setVnpayPayment({
+                invoice,
+                paymentUrl,
+                amount: res.data.data?.amount,
+                txnRef: res.data.data?.txnRef
+            });
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không thể tạo thanh toán VNPay.');
+        }
+    };
+
+    const mergeInvoice = useCallback((nextInvoice) => {
+        setInvoices(current => current.map(invoice => (
+            invoice.id === nextInvoice.id ? { ...invoice, ...nextInvoice } : invoice
+        )));
+        setVnpayPayment(current => (
+            current?.invoice?.id === nextInvoice.id ? { ...current, invoice: { ...current.invoice, ...nextInvoice } } : current
+        ));
+    }, []);
+
+    const refreshInvoicePayment = useCallback(async (invoiceId, showToast = true) => {
+        try {
+            setCheckingVnpay(true);
+            const res = await api.get(`/invoices/${invoiceId}`);
+            const nextInvoice = res.data.data;
+            if (!nextInvoice) return;
+
+            mergeInvoice(nextInvoice);
+            if (showToast) {
+                if (isInvoicePaid(nextInvoice)) {
+                    toast.success('Hóa đơn đã thanh toán thành công.');
+                } else {
+                    toast.error('Chưa ghi nhận thanh toán VNPay. Vui lòng thử lại sau vài giây.');
+                }
+            }
+        } catch (err) {
+            if (showToast) toast.error(err.response?.data?.message || 'Không thể kiểm tra trạng thái thanh toán.');
+        } finally {
+            setCheckingVnpay(false);
+        }
+    }, [mergeInvoice]);
+
+    useEffect(() => {
+        if (!vnpayPayment || isInvoicePaid(vnpayPayment.invoice)) return undefined;
+
+        const timer = window.setInterval(() => {
+            refreshInvoicePayment(vnpayPayment.invoice.id, false);
+        }, 5000);
+
+        return () => window.clearInterval(timer);
+    }, [vnpayPayment, refreshInvoicePayment]);
 
     const handleCancelAppointment = async (appointmentId) => {
         if (!window.confirm('Bạn muốn hủy lịch hẹn này?')) return;
@@ -286,7 +403,10 @@ export default function Profile() {
                                         <tbody className="divide-y divide-blue-50">
                                             {appointments.map((appointment) => (
                                                 <Fragment key={appointment.id}>
-                                                <tr className="hover:bg-blue-50/40">
+                                                <tr
+                                                    id={`profile-appointment-row-${appointment.id}`}
+                                                    className={`hover:bg-blue-50/40 ${getHighlightClass(highlight.type === 'appointment' && highlight.id === String(appointment.id))}`}
+                                                >
                                                     <td className="px-4 py-4">
                                                         <p className="font-black text-blue-950">{new Date(appointment.appointmentDate).toLocaleDateString('vi-VN')}</p>
                                                         <p className="text-sm font-bold text-blue-700">{appointment.appointmentTime}</p>
@@ -371,7 +491,7 @@ export default function Profile() {
 
                     {activeTab === 'invoices' && (
                         <div>
-                            <SectionTitle title="Hóa đơn" description="Theo dõi chi phí khám và trạng thái thanh toán." />
+                            <SectionTitle title="Hóa đơn" description="Theo dõi chi phí khám và thanh toán bằng VNPay/QR khi còn công nợ." />
                             {invoices.length === 0 ? <Empty text="Bạn chưa có hóa đơn nào." /> : (
                                 <div className="overflow-x-auto">
                                     <table className="min-w-full divide-y divide-blue-100">
@@ -382,11 +502,16 @@ export default function Profile() {
                                                 <th className="px-4 py-3">Thanh toán</th>
                                                 <th className="px-4 py-3">Tổng tiền</th>
                                                 <th className="px-4 py-3">Trạng thái</th>
+                                                <th className="px-4 py-3 text-right">Thao tác</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-blue-50">
                                             {invoices.map(invoice => (
-                                                <tr key={invoice.id} className="hover:bg-blue-50/40">
+                                                <tr
+                                                    key={invoice.id}
+                                                    id={`profile-invoice-row-${invoice.id}`}
+                                                    className={`hover:bg-blue-50/40 ${getHighlightClass(highlight.type === 'invoice' && highlight.id === String(invoice.id))}`}
+                                                >
                                                     <td className="px-4 py-4 font-black text-blue-950">INV-{invoice.id}</td>
                                                     <td className="px-4 py-4 text-sm text-slate-600">{new Date(invoice.createdAt).toLocaleDateString('vi-VN')}</td>
                                                     <td className="px-4 py-4 text-sm text-slate-600">{paymentLabels[invoice.lastPaymentMethod || invoice.paymentMethod] || invoice.paymentMethod || '-'}</td>
@@ -404,6 +529,15 @@ export default function Profile() {
                                                             {getInvoiceStatusMeta(invoice.status)[0]}
                                                         </span>
                                                     </td>
+                                                    <td className="px-4 py-4 text-right">
+                                                        {['unpaid', 'partial'].includes(invoice.status) ? (
+                                                            <button onClick={() => handleVnpayPayment(invoice)} className="rounded-xl bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
+                                                                Thanh toán VNPay/QR
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-xs font-bold text-slate-400">Đã hoàn tất</span>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -414,6 +548,14 @@ export default function Profile() {
                     )}
                 </section>
             </div>
+            {vnpayPayment && (
+                <VnpayQrModal
+                    payment={vnpayPayment}
+                    checking={checkingVnpay}
+                    onClose={() => setVnpayPayment(null)}
+                    onCheck={() => refreshInvoicePayment(vnpayPayment.invoice.id, true)}
+                />
+            )}
         </main>
     );
 }
@@ -432,6 +574,54 @@ function SummaryCard({ label, value, helper, tone }) {
             <p className="mt-1 text-sm font-black uppercase opacity-80">{label}</p>
             <p className="mt-2 text-sm leading-6 opacity-75">{helper}</p>
         </article>
+    );
+}
+
+function VnpayQrModal({ payment, checking, onClose, onCheck }) {
+    const paid = isInvoicePaid(payment.invoice);
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4" onMouseDown={onClose} role="presentation">
+            <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-emerald-50/70 p-6">
+                    <div>
+                        <p className="text-sm font-black uppercase text-emerald-700">VNPay QR</p>
+                        <h3 className="mt-1 text-2xl font-black text-blue-950">Thanh toán INV-{payment.invoice.id}</h3>
+                        <p className="mt-2 text-sm font-semibold text-slate-600">Quét mã để thanh toán hóa đơn nha khoa.</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="rounded-xl border border-emerald-100 bg-white px-4 py-2 text-sm font-black text-slate-600 hover:bg-emerald-50">Đóng</button>
+                </div>
+
+                <div className="grid gap-6 p-6 md:grid-cols-[300px_1fr]">
+                    <div className="rounded-2xl border border-emerald-100 bg-white p-5 text-center">
+                        <img src={getQrImageUrl(payment.paymentUrl)} alt="QR thanh toán VNPay" className="mx-auto h-[260px] w-[260px] rounded-xl" />
+                        <p className="mt-4 text-xs font-bold text-slate-500">Mã QR chứa link thanh toán VNPay sandbox.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="rounded-2xl bg-slate-50 p-4">
+                            <p className="text-xs font-black uppercase text-slate-400">Số tiền</p>
+                            <p className="mt-1 text-2xl font-black text-emerald-700">{formatCurrency(payment.amount || payment.invoice.outstandingAmount)}</p>
+                        </div>
+                        <div className={`rounded-2xl p-4 ${paid ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                            <p className="text-xs font-black uppercase opacity-80">Trạng thái</p>
+                            <p className="mt-1 font-black">{paid ? 'Đã ghi nhận thanh toán' : 'Đang chờ thanh toán'}</p>
+                        </div>
+                        <div className="rounded-2xl border border-blue-100 p-4 text-sm font-semibold text-slate-600">
+                            <p>Sau khi thanh toán xong, bấm kiểm tra trạng thái. Hóa đơn chỉ hoàn tất khi hệ thống ghi nhận thanh toán từ VNPay.</p>
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                            <a href={payment.paymentUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-black text-white hover:bg-emerald-700">
+                                Mở trang VNPay
+                            </a>
+                            <button type="button" onClick={onCheck} disabled={checking} className="rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-black text-blue-700 hover:bg-blue-50 disabled:opacity-60">
+                                {checking ? 'Đang kiểm tra...' : 'Đã thanh toán, kiểm tra lại'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 

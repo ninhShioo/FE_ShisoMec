@@ -4,6 +4,13 @@ import { AuthContext } from '../context/auth-context';
 import GoogleAuthButton from '../components/GoogleAuthButton';
 import AuthShell from '../components/AuthShell';
 
+const getAuthErrorMessage = (err, fallback) => {
+    if (err.response?.data?.message) return err.response.data.message;
+    if (err.code === 'ECONNABORTED') return 'Backend phản hồi quá lâu, vui lòng thử lại.';
+    if (err.request) return 'Không kết nối được backend. Hãy chạy backend ở http://localhost:8080 và kiểm tra VITE_API_URL.';
+    return fallback;
+};
+
 export default function Register() {
     const [formData, setFormData] = useState({ fullName: '', email: '', password: '', phone: '' });
     const [error, setError] = useState('');
@@ -22,7 +29,7 @@ export default function Register() {
             await register(formData);
             navigate('/login');
         } catch (err) {
-            setError(err.response?.data?.message || 'Không thể tạo tài khoản. Vui lòng thử lại.');
+            setError(getAuthErrorMessage(err, 'Không thể tạo tài khoản. Vui lòng thử lại.'));
         }
     };
 
@@ -33,7 +40,7 @@ export default function Register() {
             await googleLogin(idToken);
             navigate('/profile');
         } catch (err) {
-            setError(err.response?.data?.message || 'Không thể đăng ký bằng Google.');
+            setError(getAuthErrorMessage(err, 'Không thể đăng ký bằng Google.'));
         }
     }, [googleLogin, navigate]);
 

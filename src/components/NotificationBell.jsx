@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { io } from 'socket.io-client';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { SOCKET_URL } from '../config/env';
+import { AuthContext } from '../context/auth-context';
+import {
+    clearRememberedNotification,
+    getHighlightClass,
+    getRememberedNotificationId,
+    notificationRowHoverClass,
+    rememberOpenedNotification,
+    resolveNotificationTarget
+} from '../utils/notificationNavigation';
 
 const typeLabels = {
     appointment: 'Lịch hẹn',
@@ -20,16 +30,42 @@ const typeClasses = {
     system: 'bg-slate-100 text-slate-700'
 };
 
+const visibleTypesByRole = {
+    patient: ['appointment', 'payment', 'chat'],
+    dentist: ['appointment', 'chat', 'leave', 'system'],
+    staff: ['appointment', 'payment', 'chat', 'leave', 'system'],
+    admin: ['appointment', 'payment', 'chat', 'leave', 'system']
+};
+
+const getVisibleTypes = (role) => visibleTypesByRole[role] || ['appointment', 'payment', 'chat'];
+
 export default function NotificationBell() {
+    const { user } = useContext(AuthContext);
+    const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [recentlyOpenedId, setRecentlyOpenedId] = useState(() => getRememberedNotificationId());
+    const [typeFilter, setTypeFilter] = useState('all');
     const dropdownRef = useRef(null);
 
+    const visibleTypes = useMemo(() => getVisibleTypes(user?.role), [user?.role]);
+    const visibleTypeEntries = useMemo(
+        () => visibleTypes.map((type) => [type, typeLabels[type]]),
+        [visibleTypes]
+    );
+    const visibleNotifications = useMemo(
+        () => notifications.filter((item) => visibleTypes.includes(item.type || 'system')),
+        [notifications, visibleTypes]
+    );
+    const filteredNotifications = useMemo(
+        () => visibleNotifications.filter((item) => typeFilter === 'all' || (item.type || 'system') === typeFilter),
+        [visibleNotifications, typeFilter]
+    );
     const unreadCount = useMemo(
-        () => notifications.filter((item) => !Number(item.isRead)).length,
-        [notifications]
+        () => visibleNotifications.filter((item) => !Number(item.isRead)).length,
+        [visibleNotifications]
     );
 
     const loadNotifications = async () => {
@@ -51,6 +87,8 @@ export default function NotificationBell() {
         const token = localStorage.getItem('token');
         const socket = io(SOCKET_URL, { auth: { token } });
         const handleNotification = (notification) => {
+            if (!visibleTypes.includes(notification.type || 'system')) return;
+
             setNotifications((current) => [
                 { ...notification, isRead: 0, id: notification.id || `live-${Date.now()}` },
                 ...current
@@ -62,7 +100,7 @@ export default function NotificationBell() {
         socket.on('notification:role', handleNotification);
 
         return () => socket.disconnect();
-    }, []);
+    }, [visibleTypes]);
 
     useEffect(() => {
         const closeOnOutsideClick = (event) => {
@@ -75,6 +113,23 @@ export default function NotificationBell() {
         return () => document.removeEventListener('mousedown', closeOnOutsideClick);
     }, []);
 
+    useEffect(() => {
+        if (!recentlyOpenedId) return undefined;
+
+        const timer = window.setTimeout(() => {
+            clearRememberedNotification();
+            setRecentlyOpenedId('');
+        }, 4200);
+
+        return () => window.clearTimeout(timer);
+    }, [recentlyOpenedId]);
+
+    useEffect(() => {
+        if (!visibleTypes.includes(typeFilter) && typeFilter !== 'all') {
+            setTypeFilter('all');
+        }
+    }, [typeFilter, visibleTypes]);
+
     const markAsRead = async (notification) => {
         if (!notification.id || String(notification.id).startsWith('live-') || Number(notification.isRead)) return;
 
@@ -86,6 +141,13 @@ export default function NotificationBell() {
         } catch {
             toast.error('Không thể đánh dấu thông báo.');
         }
+    };
+
+    const openNotification = async (notification) => {
+        await markAsRead(notification);
+        setRecentlyOpenedId(rememberOpenedNotification(notification.id));
+        setOpen(false);
+        navigate(resolveNotificationTarget(notification, user?.role));
     };
 
     const markAllAsRead = async () => {
@@ -101,7 +163,10 @@ export default function NotificationBell() {
         <div ref={dropdownRef} className="relative">
             <button
                 type="button"
-                onClick={() => setOpen((value) => !value)}
+                onClick={() => {
+                    setRecentlyOpenedId(getRememberedNotificationId());
+                    setOpen((value) => !value);
+                }}
                 className="relative grid h-10 w-10 place-items-center rounded-xl border border-blue-100 bg-white text-sm font-black text-blue-700 hover:bg-blue-50"
                 aria-label="Thông báo"
             >
@@ -128,23 +193,45 @@ export default function NotificationBell() {
                     <div className="max-h-[420px] overflow-y-auto">
                         {summary?.byType && (
                             <div className="grid grid-cols-2 gap-2 border-b border-blue-50 p-3">
-                                {Object.entries(typeLabels).map(([type, label]) => (
-                                    <div key={type} className={`rounded-xl px-3 py-2 text-xs font-black ${typeClasses[type] || typeClasses.system}`}>
+                                <button
+                                    type="button"
+                                    onClick={() => setTypeFilter('all')}
+                                    className={`rounded-xl px-3 py-2 text-left text-xs font-black transition ${
+                                        typeFilter === 'all'
+                                            ? 'bg-blue-700 text-white shadow-sm shadow-blue-100'
+                                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                    }`}
+                                >
+                                    Tất cả: {unreadCount}
+                                </button>
+                                {visibleTypeEntries.map(([type, label]) => (
+                                    <button
+                                        key={type}
+                                        type="button"
+                                        onClick={() => setTypeFilter((current) => current === type ? 'all' : type)}
+                                        className={`rounded-xl px-3 py-2 text-left text-xs font-black transition ${
+                                            typeFilter === type
+                                                ? 'bg-blue-700 text-white shadow-sm shadow-blue-100'
+                                                : `${typeClasses[type] || typeClasses.system} hover:ring-2 hover:ring-[#7FD8BE] hover:ring-inset`
+                                        }`}
+                                    >
                                         {label}: {summary.byType[type]?.unread || 0}
-                                    </div>
+                                    </button>
                                 ))}
                             </div>
                         )}
                         {loading ? (
                             <div className="p-5 text-sm font-bold text-slate-500">Đang tải thông báo...</div>
-                        ) : notifications.length === 0 ? (
-                            <div className="p-5 text-sm font-bold text-slate-500">Chưa có thông báo.</div>
-                        ) : notifications.map((notification) => (
+                        ) : filteredNotifications.length === 0 ? (
+                            <div className="p-5 text-sm font-bold text-slate-500">
+                                {typeFilter === 'all' ? 'Chưa có thông báo.' : `Không có thông báo ${typeLabels[typeFilter]?.toLowerCase() || ''}.`}
+                            </div>
+                        ) : filteredNotifications.map((notification) => (
                             <button
                                 key={notification.id}
                                 type="button"
-                                onClick={() => markAsRead(notification)}
-                                className={`block w-full border-b border-blue-50 px-4 py-3 text-left last:border-b-0 ${Number(notification.isRead) ? 'bg-white' : 'bg-blue-50/60'}`}
+                                onClick={() => openNotification(notification)}
+                                className={`block w-full border-b border-blue-50 px-4 py-3 text-left last:border-b-0 ${notificationRowHoverClass} ${Number(notification.isRead) ? 'bg-white' : 'bg-blue-50/60'} ${getHighlightClass(recentlyOpenedId === String(notification.id))}`}
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
@@ -155,7 +242,7 @@ export default function NotificationBell() {
                                 </div>
                                 <div className="mt-2 flex items-center justify-between gap-3">
                                     <span className={`rounded-full px-2 py-1 text-[11px] font-black ${typeClasses[notification.type] || typeClasses.system}`}>
-                                        {typeLabels[notification.type] || 'Hệ thống'}
+                                        {typeLabels[notification.type] || 'Thông báo'}
                                     </span>
                                     <span className="text-[11px] font-semibold text-slate-400">
                                         {notification.createdAt ? new Date(notification.createdAt).toLocaleString('vi-VN') : ''}

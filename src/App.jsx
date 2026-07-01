@@ -15,6 +15,7 @@ import Reviews from './pages/Reviews';
 import NotFound from './pages/NotFound';
 import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
+import VnpayReturn from './pages/VnpayReturn';
 import ChatBox from './components/ChatBox';
 import NotificationBell from './components/NotificationBell';
 import api from './services/api';
@@ -476,6 +477,7 @@ function App() {
             <Route path="/contact" element={<Contact />} />
             <Route path="/reviews" element={<Reviews />} />
             <Route path="/book-appointment" element={<BookAppointment />} />
+            <Route path="/vnpay-return" element={<VnpayReturn />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="*" element={<NotFound />} />

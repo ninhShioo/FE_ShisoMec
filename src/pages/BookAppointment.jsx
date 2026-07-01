@@ -62,7 +62,7 @@ export default function BookAppointment() {
                 const nextDentists = dentistRes.data.data || [];
                 setServices(nextServices);
                 setDentists(nextDentists);
-                if (nextDentists.length) setDentistId(String(nextDentists[0].id));
+                setDentistId((current) => current || (nextDentists.length ? String(nextDentists[0].id) : ''));
             } catch {
                 setError('Không thể tải dữ liệu đặt lịch. Vui lòng thử lại sau.');
             }
@@ -89,8 +89,11 @@ export default function BookAppointment() {
                         serviceIds: selectedServices.join(',')
                     }
                 });
-                setSlots(res.data.data || []);
-                setTime('');
+                const nextSlots = res.data.data || [];
+                setSlots(nextSlots);
+                setTime((current) => (
+                    current && nextSlots.some((slot) => slot.time === current && slot.available) ? current : ''
+                ));
             } catch (err) {
                 setSlots([]);
                 setError(err.response?.data?.message || 'Không thể tải khung giờ trống.');

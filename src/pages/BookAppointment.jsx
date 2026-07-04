@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { AuthContext } from '../context/auth-context';
+import toast from 'react-hot-toast';
 
 const formatCurrency = (value) => {
     const amount = Number(value || 0);
@@ -32,7 +33,6 @@ export default function BookAppointment() {
     const [notes, setNotes] = useState('');
     const [category, setCategory] = useState('all');
     const [search, setSearch] = useState('');
-    const [message, setMessage] = useState('');
     const [error, setError] = useState('');
     const [loadingSlots, setLoadingSlots] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -136,7 +136,6 @@ export default function BookAppointment() {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
-        setMessage('');
         setError('');
 
         if (!dentistId) return setError('Vui lòng chọn bác sĩ.');
@@ -153,7 +152,7 @@ export default function BookAppointment() {
                 serviceIds: selectedServices
             });
 
-            setMessage('Đặt lịch thành công. Nhân viên phòng khám sẽ xác nhận lịch hẹn của bạn.');
+            toast.success('Đặt lịch thành công. Nhân viên phòng khám sẽ xác nhận lịch hẹn của bạn.');
             setDate('');
             setTime('');
             setNotes('');
@@ -204,12 +203,6 @@ export default function BookAppointment() {
 
             <section className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_380px] lg:px-8">
                 <form onSubmit={handleSubmit} className="rounded-2xl border border-blue-100 bg-white p-5 shadow-xl shadow-blue-100 sm:p-6">
-                    {message && (
-                        <div className="mb-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-bold text-emerald-700">
-                            {message}
-                            <Link to="/profile" className="ml-2 font-black underline">Xem hồ sơ</Link>
-                        </div>
-                    )}
                     {error && <div className="mb-5 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm font-bold text-rose-600">{error}</div>}
 
                     <div className="grid gap-4 lg:grid-cols-3">

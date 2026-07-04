@@ -463,7 +463,27 @@ function App() {
     <AuthProvider>
       <Router>
         <div className="min-h-screen bg-slate-50 relative">
-          <Toaster position="top-right" />
+          <Toaster
+            position="top-center"
+            containerClassName="app-toast-layer"
+            toastOptions={{
+              duration: 2800,
+              className: 'app-toast-card',
+              success: {
+                iconTheme: {
+                  primary: '#2F8F7E',
+                  secondary: '#EAF7F5'
+                }
+              },
+              error: {
+                duration: 3600,
+                iconTheme: {
+                  primary: '#D65A74',
+                  secondary: '#FFF1F4'
+                }
+              }
+            }}
+          />
           <ThemeBootstrap />
           <Navbar />
           <Routes>

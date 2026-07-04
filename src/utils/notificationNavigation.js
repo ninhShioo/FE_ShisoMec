@@ -16,6 +16,19 @@ const findInvoiceId = (notification) => {
     return match ? match[1] : '';
 };
 
+const findChatKeyword = (notification) => {
+    const message = String(notification?.message || '').trim();
+    const title = String(notification?.title || '').trim();
+    const text = message || getText(notification).trim();
+    const supportMatch = text.match(/^(.+?)\s+cần\s+(?:nhân viên|ho tro|hỗ trợ)/i);
+    if (supportMatch?.[1]) {
+        return supportMatch[1].trim();
+    }
+
+    const senderMatch = text.match(/^([^:]{2,80}):/);
+    return senderMatch?.[1]?.trim() || title;
+};
+
 export const resolveNotificationTarget = (notification, userRole) => {
     const type = notification?.type || 'system';
     const isPatient = userRole === 'patient';
@@ -45,7 +58,10 @@ export const resolveNotificationTarget = (notification, userRole) => {
     }
 
     if (type === 'chat') {
-        return isPatient ? '/profile' : '/dashboard?tab=appointments';
+        const keyword = findChatKeyword(notification);
+        const query = new URLSearchParams({ openChat: '1' });
+        if (keyword && !isPatient) query.set('chatSearch', keyword);
+        return isPatient ? `/profile?${query.toString()}` : `/dashboard?${query.toString()}`;
     }
 
     return isPatient ? '/profile' : '/dashboard';

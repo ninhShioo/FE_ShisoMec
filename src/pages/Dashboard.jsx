@@ -13,6 +13,7 @@ import DentistDayOffTab from '../components/dashboard/DentistDayOffTab';
 import WorkspaceSummary from '../components/dashboard/WorkspaceSummary';
 import ReviewsTab from '../components/dashboard/ReviewsTab';
 import NotificationsHistoryTab from '../components/dashboard/NotificationsHistoryTab';
+import RecordsTab from '../components/dashboard/RecordsTab';
 
 const roleLabels = {
     admin: 'Quản trị viên',
@@ -59,6 +60,7 @@ export default function Dashboard() {
         return [
             user.role === 'admin' && ['analytics', 'Tổng quan'],
             ['appointments', appointmentLabel],
+            (user.role === 'admin' || user.role === 'staff' || user.role === 'dentist') && ['records', 'Hồ sơ khám'],
             user.role === 'admin' && ['services', 'Dịch vụ'],
             (user.role === 'admin' || user.role === 'staff') && ['invoices', 'Hóa đơn'],
             (user.role === 'admin' || user.role === 'staff') && ['schedules', 'Lịch làm việc'],
@@ -166,6 +168,7 @@ export default function Dashboard() {
                 <div className="mt-6">
                     {activeTab === 'analytics' && user.role === 'admin' && <AnalyticsTab />}
                     {activeTab === 'appointments' && <AppointmentsTab />}
+                    {activeTab === 'records' && (user.role === 'admin' || user.role === 'staff' || user.role === 'dentist') && <RecordsTab />}
                     {activeTab === 'services' && user.role === 'admin' && <ServicesTab />}
                     {activeTab === 'invoices' && (user.role === 'admin' || user.role === 'staff') && <InvoicesTab />}
                     {activeTab === 'schedules' && (user.role === 'admin' || user.role === 'staff') && <SchedulesTab />}

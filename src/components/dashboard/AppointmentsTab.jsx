@@ -445,6 +445,11 @@ export default function AppointmentsTab() {
             {showCreateForm && isFrontDesk && (
                 <form onSubmit={handleCreateAppointment} className="m-6 rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
                     <h3 className="font-black text-blue-950">Tạo lịch hẹn tại quầy</h3>
+                    {user.role === 'admin' && (
+                        <p className="mt-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
+                            Admin có thể tạo lịch trong quá khứ để nhập dữ liệu kiểm thử hoặc đối soát lịch cũ.
+                        </p>
+                    )}
                     <div className="mt-4 grid gap-4 lg:grid-cols-4">
                         <Select label="Khách hàng" value={createForm.patientId} onChange={value => setCreateForm({ ...createForm, patientId: value })} required>
                             <option value="">Chọn khách hàng</option>
@@ -454,7 +459,7 @@ export default function AppointmentsTab() {
                             <option value="">Phân công sau</option>
                             {dentists.map(dentist => <option key={dentist.id} value={dentist.id}>{dentist.fullName}</option>)}
                         </Select>
-                        <Field label="Ngày khám" type="date" min={todayValue()} value={createForm.appointmentDate} onChange={value => setCreateForm({ ...createForm, appointmentDate: value })} required />
+                        <Field label="Ngày khám" type="date" min={user.role === 'admin' ? undefined : todayValue()} value={createForm.appointmentDate} onChange={value => setCreateForm({ ...createForm, appointmentDate: value })} required />
                         <Field label="Giờ khám" type="time" value={createForm.appointmentTime} onChange={value => setCreateForm({ ...createForm, appointmentTime: value })} required />
                     </div>
 

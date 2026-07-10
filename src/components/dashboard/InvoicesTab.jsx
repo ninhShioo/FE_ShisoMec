@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getHighlightClass } from '../../utils/notificationNavigation';
+import Icon from '../ui/Icons';
 
 const paymentLabels = {
     cash: 'Tiền mặt',
@@ -18,6 +19,10 @@ const formatCurrency = (value) => {
     return amount.toLocaleString('vi-VN') + ' đ';
 };
 
+function MoneyText({ value, className = '' }) {
+    return <span className={`whitespace-nowrap tabular-nums ${className}`}>{formatCurrency(value)}</span>;
+}
+
 const getQrImageUrl = (paymentUrl) => (
     `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data=${encodeURIComponent(paymentUrl)}`
 );
@@ -26,6 +31,7 @@ const isInvoicePaid = (invoice) => invoice?.status === 'paid' || Number(invoice?
 
 export default function InvoicesTab() {
     const location = useLocation();
+    const navigate = useNavigate();
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedMethods, setSelectedMethods] = useState({});
@@ -66,9 +72,17 @@ export default function InvoicesTab() {
         setHighlight(queryHighlight);
         if (!queryHighlight.type || !queryHighlight.id) return undefined;
 
-        const timer = window.setTimeout(() => setHighlight({ type: null, id: null }), 4200);
+        const timer = window.setTimeout(() => {
+            setHighlight({ type: null, id: null });
+
+            const params = new URLSearchParams(location.search);
+            params.delete('highlightType');
+            params.delete('highlightId');
+            const nextSearch = params.toString();
+            navigate(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`, { replace: true });
+        }, 4200);
         return () => window.clearTimeout(timer);
-    }, [queryHighlight]);
+    }, [location.pathname, location.search, navigate, queryHighlight]);
 
     useEffect(() => {
         if (loading || highlight.type !== 'invoice' || !highlight.id) return;
@@ -250,15 +264,15 @@ export default function InvoicesTab() {
 
             <Panel>
                 <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-blue-100">
+                    <table className="min-w-[1260px] divide-y divide-blue-100">
                         <thead>
                             <tr className="bg-blue-50/60 text-left text-xs font-black uppercase text-slate-500">
-                                <th className="px-6 py-3">Mã hóa đơn</th>
-                                <th className="px-6 py-3">Khách hàng</th>
-                                <th className="px-6 py-3">Tổng tiền</th>
-                                <th className="px-6 py-3">Thanh toán</th>
-                                <th className="px-6 py-3">Trạng thái</th>
-                                <th className="px-6 py-3 text-right">Thao tác</th>
+                                <th className="w-[120px] px-6 py-3">Mã hóa đơn</th>
+                                <th className="w-[190px] px-6 py-3">Khách hàng</th>
+                                <th className="w-[350px] px-6 py-3">Tổng tiền</th>
+                                <th className="w-[260px] px-6 py-3">Thanh toán</th>
+                                <th className="w-[140px] px-6 py-3 text-center">Trạng thái</th>
+                                <th className="w-[220px] px-6 py-3 text-center">Thao tác</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-blue-50">
@@ -275,22 +289,22 @@ export default function InvoicesTab() {
                                         <p className="font-black text-blue-950">{invoice.patientName}</p>
                                         {invoice.patientPhone && <p className="text-xs text-slate-500">{invoice.patientPhone}</p>}
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <p className="font-black text-blue-700">{formatCurrency(invoice.totalAmount)}</p>
+                                    <td className="px-6 py-4 align-top">
+                                        <p className="font-black text-blue-700"><MoneyText value={invoice.totalAmount} /></p>
                                         {Number(invoice.discountAmount || 0) > 0 && (
-                                            <p className="text-xs font-bold text-emerald-600">Giảm {formatCurrency(invoice.discountAmount)}</p>
+                                            <p className="text-xs font-bold text-emerald-600">Giảm <MoneyText value={invoice.discountAmount} /></p>
                                         )}
-                                        <p className="text-xs text-slate-500">Đã thu {formatCurrency(invoice.paidAmount)}</p>
+                                        <p className="text-xs text-slate-500">Đã thu <MoneyText value={invoice.paidAmount} /></p>
                                         {Number(invoice.outstandingAmount || 0) > 0 && (
-                                            <p className="text-xs font-black text-rose-600">Còn {formatCurrency(invoice.outstandingAmount)}</p>
+                                            <p className="text-xs font-black text-rose-600">Còn <MoneyText value={invoice.outstandingAmount} /></p>
                                         )}
                                         {Array.isArray(invoice.items) && invoice.items.length > 0 && (
-                                            <div className="mt-2 space-y-1 rounded-xl bg-blue-50/60 p-2">
+                                            <div className="mt-3 space-y-2 rounded-xl bg-blue-50/60 p-3">
                                                 {invoice.items.map((item) => (
-                                                    <p key={item.id} className="flex justify-between gap-3 text-xs text-slate-600">
-                                                        <span>{item.description}</span>
-                                                        <span className="font-bold">{formatCurrency(item.totalPrice)}</span>
-                                                    </p>
+                                                    <div key={item.id} className="grid min-h-[34px] grid-cols-[minmax(150px,1fr)_max-content] items-center gap-4 text-xs leading-5 text-slate-600">
+                                                        <span className="min-w-0 break-words">{item.description}</span>
+                                                        <MoneyText value={item.totalPrice} className="justify-self-end font-bold text-slate-700" />
+                                                    </div>
                                                 ))}
                                             </div>
                                         )}
@@ -324,29 +338,28 @@ export default function InvoicesTab() {
                                             </div>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`rounded-full px-3 py-1 text-xs font-black ${invoiceStatusMeta(invoice.status)[1]}`}>
+                                    <td className="px-6 py-4 text-center">
+                                        <span className={`inline-flex min-w-[112px] justify-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ${invoiceStatusMeta(invoice.status)[1]}`}>
                                             {invoiceStatusMeta(invoice.status)[0]}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button onClick={() => openInvoiceDetail(invoice)} className="mr-2 rounded-xl border border-blue-100 bg-white px-4 py-2 text-xs font-black text-blue-700 hover:bg-blue-50">
-                                            Chi tiết
-                                        </button>
+                                    <td className="px-6 py-4">
+                                        <div className="flex min-w-max flex-nowrap items-center justify-center gap-2">
+                                        <InvoiceIconAction label="Chi tiết" icon="eye" tone="blue" onClick={() => openInvoiceDetail(invoice)} />
                                         {['unpaid', 'partial'].includes(invoice.status) ? (
                                             <>
                                                 {getSelectedMethod(invoice) === 'transfer' && (
-                                                    <button onClick={() => handleVnpayPayment(invoice)} className="mr-2 rounded-xl bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
-                                                        VNPay/QR
-                                                    </button>
+                                                    <InvoiceIconAction label="VNPay/QR" icon="qr" tone="emerald" onClick={() => handleVnpayPayment(invoice)} />
                                                 )}
-                                                <button onClick={() => handlePay(invoice.id)} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white hover:bg-blue-800">
-                                                    Xác nhận thu tiền
-                                                </button>
+                                                <InvoiceIconAction label="Xác nhận thu tiền" icon="wallet" tone="solidBlue" onClick={() => handlePay(invoice.id)} />
                                             </>
                                         ) : (
-                                            <span className="text-xs font-bold text-slate-400">Đã hoàn tất</span>
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">
+                                                <Icon name="check" className="h-3.5 w-3.5" />
+                                                Đã hoàn tất
+                                            </span>
                                         )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -361,7 +374,7 @@ export default function InvoicesTab() {
                         <p className="text-sm font-black uppercase text-rose-600">Cần theo dõi</p>
                         <p className="mt-1 text-sm text-slate-500">Tổng tiền chưa thu từ các hóa đơn chưa thanh toán.</p>
                     </div>
-                    <p className="text-2xl font-black text-rose-700">{formatCurrency(pendingAmount)}</p>
+                    <p className="text-2xl font-black text-rose-700"><MoneyText value={pendingAmount} /></p>
                 </div>
             </Panel>
 
@@ -429,7 +442,7 @@ function VnpayQrModal({ payment, checking, onClose, onCheck }) {
                     <div className="space-y-4">
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-xs font-black uppercase text-slate-400">Số tiền</p>
-                            <p className="mt-1 text-2xl font-black text-emerald-700">{formatCurrency(payment.amount || payment.invoice.outstandingAmount)}</p>
+                            <p className="mt-1 text-2xl font-black text-emerald-700"><MoneyText value={payment.amount || payment.invoice.outstandingAmount} /></p>
                         </div>
                         <div className={`rounded-2xl p-4 ${paid ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                             <p className="text-xs font-black uppercase opacity-80">Trạng thái</p>
@@ -491,10 +504,10 @@ function InvoiceDetailModal({ invoice, loading, onClose }) {
                         </div>
                         <div className="divide-y divide-blue-50">
                             {(invoice.items || []).map((item) => (
-                                <div key={item.id} className="grid grid-cols-[1fr_80px_130px] gap-3 px-4 py-3 text-sm">
-                                    <span className="font-bold text-slate-700">{item.description}</span>
+                                <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_56px_max-content] items-start gap-3 px-4 py-3 text-sm">
+                                    <span className="min-w-0 font-bold text-slate-700">{item.description}</span>
                                     <span className="text-center text-slate-500">x{item.quantity}</span>
-                                    <span className="text-right font-black text-blue-700">{formatCurrency(item.totalPrice)}</span>
+                                    <MoneyText value={item.totalPrice} className="text-right font-black text-blue-700" />
                                 </div>
                             ))}
                         </div>
@@ -519,7 +532,7 @@ function InvoiceDetailModal({ invoice, loading, onClose }) {
                                             <p className="font-black text-blue-950">{paymentLabels[payment.paymentMethod] || payment.paymentMethod}</p>
                                             <p className="text-xs font-semibold text-slate-500">{payment.createdAt ? new Date(payment.createdAt).toLocaleString('vi-VN') : ''}</p>
                                         </div>
-                                        <p className="font-black text-emerald-700">{formatCurrency(payment.amount)}</p>
+                                        <p className="font-black text-emerald-700"><MoneyText value={payment.amount} /></p>
                                     </div>
                                 ))}
                             </div>
@@ -540,11 +553,32 @@ function Info({ label, value }) {
     );
 }
 
+function InvoiceIconAction({ label, icon, tone = 'blue', onClick }) {
+    const tones = {
+        blue: 'border border-blue-100 bg-white text-blue-700 hover:bg-blue-50',
+        emerald: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+        solidBlue: 'bg-blue-700 text-white hover:bg-blue-800',
+        slate: 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            title={label}
+            aria-label={label}
+            className={`grid h-10 w-10 place-items-center rounded-full transition ${tones[tone] || tones.blue}`}
+        >
+            <Icon name={icon} className="h-4 w-4" />
+        </button>
+    );
+}
+
 function Meta({ label, value, strong = false }) {
     return (
         <div className="flex items-center justify-between gap-4">
             <span className="text-sm font-bold text-slate-500">{label}</span>
-            <span className={`${strong ? 'text-xl text-rose-700' : 'text-base text-blue-950'} font-black`}>{value}</span>
+            <span className={`whitespace-nowrap tabular-nums ${strong ? 'text-xl text-rose-700' : 'text-base text-blue-950'} font-black`}>{value}</span>
         </div>
     );
 }

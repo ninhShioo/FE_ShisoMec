@@ -79,9 +79,17 @@ export default function NotificationsHistoryTab() {
         setHighlight(queryHighlight);
         if (!queryHighlight.type || !queryHighlight.id) return undefined;
 
-        const timer = window.setTimeout(() => setHighlight({ type: null, id: null }), 4200);
+        const timer = window.setTimeout(() => {
+            setHighlight({ type: null, id: null });
+
+            const params = new URLSearchParams(location.search);
+            params.delete('highlightType');
+            params.delete('highlightId');
+            const nextSearch = params.toString();
+            navigate(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`, { replace: true });
+        }, 4200);
         return () => window.clearTimeout(timer);
-    }, [queryHighlight]);
+    }, [location.pathname, location.search, navigate, queryHighlight]);
 
     useEffect(() => {
         if (!recentlyOpenedId) return undefined;

@@ -108,11 +108,11 @@ export default function ServicesList() {
                                         <div className="mt-5 grid grid-cols-2 gap-3 border-t border-blue-50 pt-4">
                                             <div className="rounded-xl bg-blue-50 p-3">
                                                 <p className="text-xs font-black uppercase text-blue-500">Chi phí</p>
-                                                <p className="mt-1 text-base font-black text-blue-800">{formatCurrency(service.price)}</p>
+                                                <p className="mt-1 whitespace-nowrap text-base font-black tabular-nums text-blue-800">{formatCurrency(service.price)}</p>
                                             </div>
                                             <div className="rounded-xl bg-slate-50 p-3">
                                                 <p className="text-xs font-black uppercase text-slate-400">Thời gian</p>
-                                                <p className="mt-1 text-base font-black text-slate-800">{service.duration || 30} phút</p>
+                                                <p className="mt-1 whitespace-nowrap text-base font-black text-slate-800">{service.duration || 30} phút</p>
                                             </div>
                                         </div>
 

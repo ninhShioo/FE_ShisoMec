@@ -5,12 +5,9 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { SOCKET_URL } from '../config/env';
 import { AuthContext } from '../context/auth-context';
+import Icon from './ui/Icons';
 import {
-    clearRememberedNotification,
-    getHighlightClass,
-    getRememberedNotificationId,
     notificationRowHoverClass,
-    rememberOpenedNotification,
     resolveNotificationTarget
 } from '../utils/notificationNavigation';
 
@@ -46,7 +43,6 @@ export default function NotificationBell() {
     const [notifications, setNotifications] = useState([]);
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [recentlyOpenedId, setRecentlyOpenedId] = useState(() => getRememberedNotificationId());
     const [typeFilter, setTypeFilter] = useState('all');
     const dropdownRef = useRef(null);
 
@@ -114,17 +110,6 @@ export default function NotificationBell() {
     }, []);
 
     useEffect(() => {
-        if (!recentlyOpenedId) return undefined;
-
-        const timer = window.setTimeout(() => {
-            clearRememberedNotification();
-            setRecentlyOpenedId('');
-        }, 4200);
-
-        return () => window.clearTimeout(timer);
-    }, [recentlyOpenedId]);
-
-    useEffect(() => {
         if (!visibleTypes.includes(typeFilter) && typeFilter !== 'all') {
             setTypeFilter('all');
         }
@@ -145,7 +130,6 @@ export default function NotificationBell() {
 
     const openNotification = async (notification) => {
         await markAsRead(notification);
-        setRecentlyOpenedId(rememberOpenedNotification(notification.id));
         setOpen(false);
         navigate(resolveNotificationTarget(notification, user?.role));
     };
@@ -163,14 +147,12 @@ export default function NotificationBell() {
         <div ref={dropdownRef} className="relative">
             <button
                 type="button"
-                onClick={() => {
-                    setRecentlyOpenedId(getRememberedNotificationId());
-                    setOpen((value) => !value);
-                }}
-                className="relative grid h-10 w-10 place-items-center rounded-xl border border-blue-100 bg-white text-sm font-black text-blue-700 hover:bg-blue-50"
+                onClick={() => setOpen((value) => !value)}
+                className="relative grid h-10 w-10 place-items-center rounded-xl border border-blue-100 bg-white text-blue-700 shadow-sm shadow-blue-50 transition hover:bg-blue-50"
                 aria-label="Thông báo"
+                title="Thông báo"
             >
-                TB
+                <Icon name="bell" className="h-5 w-5" />
                 {unreadCount > 0 && (
                     <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
                         {unreadCount > 9 ? '9+' : unreadCount}
@@ -231,7 +213,7 @@ export default function NotificationBell() {
                                 key={notification.id}
                                 type="button"
                                 onClick={() => openNotification(notification)}
-                                className={`block w-full border-b border-blue-50 px-4 py-3 text-left last:border-b-0 ${notificationRowHoverClass} ${Number(notification.isRead) ? 'bg-white' : 'bg-blue-50/60'} ${getHighlightClass(recentlyOpenedId === String(notification.id))}`}
+                                className={`block w-full border-b border-blue-50 px-4 py-3 text-left last:border-b-0 ${notificationRowHoverClass} ${Number(notification.isRead) ? 'bg-white' : 'bg-blue-50/60'}`}
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">

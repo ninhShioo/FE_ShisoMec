@@ -30,11 +30,15 @@ export default function ChatBox() {
 
     const isStaffChat = user && ['admin', 'staff'].includes(user.role);
     const patientSuggestions = [
-        'Em đau răng khôn thì đăng ký như nào?',
+        'Tôi muốn đặt lịch khám',
+        'Lịch của tôi',
+        'Hồ sơ khám của tôi',
+        'Tôi có lịch tái khám không?',
+        'Tôi còn hóa đơn chưa thanh toán không?',
+        'Em đau răng thì nên đặt dịch vụ nào?',
         'Bác sĩ nào còn trống gần nhất?',
         'Em muốn tư vấn niềng răng',
-        'Thanh toán VNPay QR như nào?',
-        'Quy trình khi đến khám ra sao?'
+        'Tôi muốn gặp nhân viên'
     ];
     const totalUnread = useMemo(
         () => contacts.reduce((sum, contact) => sum + Number(contact.unreadCount || 0), 0),
@@ -260,6 +264,19 @@ export default function ChatBox() {
         }
     };
 
+    const submitAiFeedback = async (messageId, rating) => {
+        if (!messageId) return;
+
+        try {
+            await api.post(`/chat/messages/${messageId}/feedback`, { rating });
+            setMessages((current) => current.map((message) => (
+                message.id === messageId ? { ...message, aiFeedback: rating } : message
+            )));
+        } catch (error) {
+            console.error('Không thể gửi đánh giá AI:', error);
+        }
+    };
+
     const closeChat = () => {
         setIsOpen(false);
         const params = new URLSearchParams(location.search);
@@ -294,7 +311,7 @@ export default function ChatBox() {
 
     if (!user) return null;
 
-    const title = isStaffChat ? 'Hộp chat khách hàng' : 'Hỗ trợ trực tuyến';
+    const title = isStaffChat ? 'Hộp chat khách hàng' : 'Trợ lý AI nha khoa';
 
     return (
         <div className="fixed inset-x-4 bottom-4 z-[80] flex flex-col items-end sm:left-auto sm:right-6 sm:bottom-6">
@@ -383,7 +400,7 @@ export default function ChatBox() {
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                     <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-blue-700">
-                                        Trực tuyến
+                                        {isStaffChat ? 'Trực tuyến' : 'AI hỗ trợ 24/7'}
                                     </div>
                                     <h3 className="mt-2 truncate text-lg font-black leading-6 text-blue-950">{title}</h3>
                                 </div>
@@ -436,7 +453,7 @@ export default function ChatBox() {
                                     </>
                                 )}
                                 <p className="text-xs text-slate-500">
-                                    {isStaffChat ? (selectedPatient?.fullName || 'Chọn khách hàng') : 'Hội thoại riêng với phòng khám'}
+                                    {isStaffChat ? (selectedPatient?.fullName || 'Chọn khách hàng') : 'Hỏi triệu chứng, dịch vụ, lịch trống, hóa đơn hoặc gặp lễ tân'}
                                 </p>
                             </div>
                         </div>
@@ -478,12 +495,41 @@ export default function ChatBox() {
                                                 ))}
                                             </div>
                                         )}
+                                        {isAssistant && !isStaffChat && msg.id && (
+                                            <div className="mt-2 flex max-w-[min(86%,620px)] flex-wrap gap-2 text-xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => submitAiFeedback(msg.id, 'helpful')}
+                                                    className={`rounded-full border px-3 py-1.5 font-black transition ${
+                                                        msg.aiFeedback === 'helpful'
+                                                            ? 'border-teal-300 bg-teal-100 text-teal-800'
+                                                            : 'border-teal-100 bg-white text-teal-700 hover:bg-teal-50'
+                                                    }`}
+                                                >
+                                                    ✓ Hữu ích
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => submitAiFeedback(msg.id, 'unhelpful')}
+                                                    className={`rounded-full border px-3 py-1.5 font-black transition ${
+                                                        msg.aiFeedback === 'unhelpful'
+                                                            ? 'border-rose-300 bg-rose-100 text-rose-700'
+                                                            : 'border-rose-100 bg-white text-rose-600 hover:bg-rose-50'
+                                                    }`}
+                                                >
+                                                    × Chưa ổn
+                                                </button>
+                                                {msg.aiFeedback && (
+                                                    <span className="self-center font-bold text-slate-400">Đã ghi nhận</span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
                             {assistantTyping && !isStaffChat && (
                                 <div className="flex flex-col items-start">
-                                    <span className="mb-1 text-xs font-bold text-slate-500">Trợ lý Phenikaa Dental</span>
+                                    <span className="mb-1 text-xs font-bold text-slate-500">Trợ lý AI Phenikaa Dental</span>
                                     <div className="rounded-2xl rounded-tl-none border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-bold text-teal-700 shadow-sm">
                                         Đang trả lời...
                                     </div>
@@ -533,7 +579,7 @@ export default function ChatBox() {
                     className="relative flex h-14 min-w-14 items-center justify-center gap-2 rounded-full border border-blue-100 bg-white px-5 text-sm font-black text-blue-700 shadow-[0_16px_40px_rgba(45,55,72,0.14)] transition hover:scale-105 hover:bg-blue-50"
                     aria-label="Mở chat hỗ trợ"
                 >
-                    Chat
+                    {isStaffChat ? 'Chat' : 'AI Chat'}
                     {isStaffChat && totalUnread > 0 && (
                         <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
                             {totalUnread > 9 ? '9+' : totalUnread}

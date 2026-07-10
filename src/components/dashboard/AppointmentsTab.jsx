@@ -2,8 +2,9 @@ import { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { AuthContext } from '../../context/auth-context';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getHighlightClass } from '../../utils/notificationNavigation';
+import Icon from '../ui/Icons';
 
 const todayValue = () => {
     const now = new Date();
@@ -52,6 +53,7 @@ const toothNumbers = [
 export default function AppointmentsTab() {
     const { user } = useContext(AuthContext);
     const location = useLocation();
+    const navigate = useNavigate();
     const isFrontDesk = user.role === 'admin' || user.role === 'staff';
     const isDentist = user.role === 'dentist';
     const queryHighlight = useMemo(() => {
@@ -84,9 +86,17 @@ export default function AppointmentsTab() {
         setHighlight(queryHighlight);
         if (!queryHighlight.type || !queryHighlight.id) return undefined;
 
-        const timer = window.setTimeout(() => setHighlight({ type: null, id: null }), 4200);
+        const timer = window.setTimeout(() => {
+            setHighlight({ type: null, id: null });
+
+            const params = new URLSearchParams(location.search);
+            params.delete('highlightType');
+            params.delete('highlightId');
+            const nextSearch = params.toString();
+            navigate(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`, { replace: true });
+        }, 4200);
         return () => window.clearTimeout(timer);
-    }, [queryHighlight]);
+    }, [location.pathname, location.search, navigate, queryHighlight]);
 
     useEffect(() => {
         if (loading || highlight.type !== 'appointment' || !highlight.id) return;
@@ -570,16 +580,16 @@ export default function AppointmentsTab() {
             )}
 
             <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-blue-100">
+                <table className="min-w-[1280px] divide-y divide-blue-100">
                     <thead>
                         <tr className="bg-blue-50/50 text-left text-xs font-black uppercase text-slate-500">
-                            <th className="px-6 py-3">Mã</th>
-                            <th className="px-6 py-3">Khách hàng</th>
-                            <th className="px-6 py-3">Dịch vụ</th>
-                            <th className="px-6 py-3">Thời gian</th>
-                            {isFrontDesk && <th className="px-6 py-3">Bác sĩ</th>}
-                            <th className="px-6 py-3">Trạng thái</th>
-                            <th className="px-6 py-3 text-right">Thao tác</th>
+                            <th className="w-[90px] px-6 py-3">Mã</th>
+                            <th className="w-[170px] px-6 py-3">Khách hàng</th>
+                            <th className="w-[240px] px-6 py-3">Dịch vụ</th>
+                            <th className="w-[150px] px-6 py-3">Thời gian</th>
+                            {isFrontDesk && <th className="w-[190px] px-6 py-3">Bác sĩ</th>}
+                            <th className="w-[150px] px-6 py-3 text-center">Trạng thái</th>
+                            <th className="w-[360px] px-6 py-3 text-center">Thao tác</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-blue-50">
@@ -598,7 +608,9 @@ export default function AppointmentsTab() {
                                         <p className="font-black text-blue-950">{appointment.patientName}</p>
                                         <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
                                     </td>
-                                    <td className="max-w-xs px-6 py-4 text-sm text-slate-600">{appointment.serviceNames || 'Chưa có dịch vụ'}</td>
+                                    <td className="px-6 py-4 text-sm leading-6 text-slate-600">
+                                        <p className="line-clamp-2 max-w-[240px]">{appointment.serviceNames || 'Chưa có dịch vụ'}</p>
+                                    </td>
                                     <td className="px-6 py-4">
                                         <p className="font-bold text-slate-800">{new Date(appointment.appointmentDate).toLocaleDateString('vi-VN')}</p>
                                         <p className="text-sm font-black text-blue-700">{appointment.appointmentTime}</p>
@@ -613,49 +625,48 @@ export default function AppointmentsTab() {
                                             ) : <span className="text-sm font-semibold text-slate-700">{appointment.dentistName || 'Chưa phân công'}</span>}
                                         </td>
                                     )}
-                                    <td className="px-6 py-4">
+                                    <td className="px-6 py-4 text-center">
                                         <span className={`inline-flex min-w-[92px] justify-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ${statusClass}`}>{statusLabel}</span>
                                         {appointment.warnings?.length > 0 && (
                                             <p className="mt-2 text-xs font-black text-amber-700">{appointment.warnings[0].label}</p>
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="flex justify-end gap-2">
+                                        <div className="mx-auto inline-flex max-w-[340px] flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-blue-100 bg-white/90 p-1.5 shadow-sm">
                                             {isFrontDesk && ['pending', 'confirmed'].includes(appointment.status) && (
-                                                <button onClick={() => openReschedule(appointment)} className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-black text-cyan-700 hover:bg-cyan-100">Dời lịch</button>
+                                                <IconAction label="Dời lịch" icon="calendarClock" tone="cyan" onClick={() => openReschedule(appointment)} />
                                             )}
                                             {isFrontDesk && appointment.status === 'confirmed' && (
                                                 <>
-                                                    <button onClick={() => handleQuickStatus(appointment, 'arrived')} className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 hover:bg-emerald-100">Check-in</button>
-                                                    <button onClick={() => handleQuickStatus(appointment, 'no_show')} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-200">Không đến</button>
+                                                    <IconAction label="Check-in" icon="userCheck" tone="emerald" onClick={() => handleQuickStatus(appointment, 'arrived')} />
+                                                    <IconAction label="Không đến" icon="userX" tone="slate" onClick={() => handleQuickStatus(appointment, 'no_show')} />
                                                 </>
                                             )}
                                             {isDentist && ['confirmed', 'arrived'].includes(appointment.status) && (
-                                                <button onClick={() => handleQuickStatus(appointment, 'in_progress')} className="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700 hover:bg-indigo-100">Bắt đầu khám</button>
+                                                <IconAction label="Bắt đầu khám" icon="play" tone="indigo" onClick={() => handleQuickStatus(appointment, 'in_progress')} />
                                             )}
                                             {isFrontDesk && appointment.status === 'pending' && (
                                                 <>
-                                                    <button onClick={() => handleConfirmAndAssign(appointment.id)} className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700 hover:bg-blue-100">Xác nhận</button>
-                                                    <button onClick={() => handleUpdateStatus(appointment.id, 'cancelled')} className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-black text-rose-600 hover:bg-rose-100">Hủy</button>
+                                                    <IconAction label="Xác nhận" icon="check" tone="blue" onClick={() => handleConfirmAndAssign(appointment.id)} />
+                                                    <IconAction label="Hủy" icon="x" tone="rose" onClick={() => handleUpdateStatus(appointment.id, 'cancelled')} />
                                                 </>
                                             )}
                                             {isFrontDesk && appointment.status === 'confirmed' && (
-                                                <button onClick={() => handleAssignOnly(appointment.id)} className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700 hover:bg-blue-100">
-                                                    Đổi bác sĩ
-                                                </button>
+                                                    <IconAction label="Đổi bác sĩ" icon="userCog" tone="blue" onClick={() => handleAssignOnly(appointment.id)} />
                                             )}
                                             {isDentist && ['arrived', 'in_progress'].includes(appointment.status) && (
-                                                <button onClick={() => openRecordForm(appointment)} className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 hover:bg-emerald-100">Ghi hồ sơ</button>
+                                                <IconAction label="Ghi hồ sơ" icon="fileText" tone="emerald" onClick={() => openRecordForm(appointment)} />
                                             )}
                                             {isFrontDesk && appointment.status === 'completed' && !appointment.invoiceId && (
-                                                <button onClick={() => handleCreateInvoice(appointment.id)} className="rounded-full bg-violet-50 px-3 py-1.5 text-xs font-black text-violet-700 hover:bg-violet-100">Xuất hóa đơn</button>
+                                                <IconAction label="Xuất hóa đơn" icon="receipt" tone="violet" onClick={() => handleCreateInvoice(appointment.id)} />
                                             )}
                                             {isFrontDesk && appointment.status === 'completed' && appointment.invoiceId && (
-                                                <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">Đã xuất hóa đơn</span>
+                                                <span className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-xl border border-emerald-100 bg-emerald-50 px-3 text-xs font-black text-emerald-700">
+                                                    <Icon name="receipt" className="h-4 w-4" />
+                                                    Đã xuất
+                                                </span>
                                             )}
-                                            <button onClick={() => setDetailAppt(appointment)} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-200">
-                                                Chi tiết
-                                            </button>
+                                            <IconAction label="Chi tiết" icon="eye" tone="slate" onClick={() => setDetailAppt(appointment)} />
                                         </div>
                                     </td>
                                 </tr>
@@ -877,6 +888,31 @@ function SummaryPill({ label, value, tone = 'blue' }) {
     );
 }
 
+function IconAction({ label, icon, tone = 'slate', onClick, type = 'button' }) {
+    const tones = {
+        blue: 'border-blue-100 bg-blue-50 text-blue-700 hover:border-blue-200 hover:bg-blue-100',
+        cyan: 'border-cyan-100 bg-cyan-50 text-cyan-700 hover:border-cyan-200 hover:bg-cyan-100',
+        emerald: 'border-emerald-100 bg-emerald-50 text-emerald-700 hover:border-emerald-200 hover:bg-emerald-100',
+        indigo: 'border-indigo-100 bg-indigo-50 text-indigo-700 hover:border-indigo-200 hover:bg-indigo-100',
+        rose: 'border-rose-100 bg-rose-50 text-rose-600 hover:border-rose-200 hover:bg-rose-100',
+        violet: 'border-violet-100 bg-violet-50 text-violet-700 hover:border-violet-200 hover:bg-violet-100',
+        slate: 'border-slate-100 bg-slate-50 text-slate-600 hover:border-slate-200 hover:bg-slate-100'
+    };
+
+    return (
+        <button
+            type={type}
+            onClick={onClick}
+            title={label}
+            aria-label={label}
+            className={`inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-xl border px-3 text-xs font-black transition ${tones[tone] || tones.slate}`}
+        >
+            <Icon name={icon} className="h-4 w-4" />
+            <span>{label}</span>
+        </button>
+    );
+}
+
 function QuickRescheduleButtons({ currentDate, currentTime, onApply }) {
     const applyOffset = (minutesToAdd) => {
         if (!currentDate || !currentTime) return;
@@ -1070,15 +1106,15 @@ function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, 
                                 </div>
                             )}
 
-                            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                            <div className="mt-5 grid auto-rows-fr gap-3 sm:grid-cols-3 xl:grid-cols-5">
                                 {workflowStatusSteps.map(([key, label], index) => {
                                     const done = !isCancelled && currentStepIndex >= index;
                                     return (
-                                        <div key={key} className={`rounded-xl border p-4 ${done ? 'border-blue-200 bg-blue-50' : 'border-slate-100 bg-slate-50'}`}>
+                                        <div key={key} className={`flex min-h-[118px] flex-col items-center justify-center rounded-xl border p-4 text-center ${done ? 'border-blue-200 bg-blue-50' : 'border-slate-100 bg-slate-50'}`}>
                                             <span className={`grid h-8 w-8 place-items-center rounded-full text-xs font-black ${done ? 'bg-blue-700 text-white' : 'bg-white text-slate-400'}`}>
                                                 {index + 1}
                                             </span>
-                                            <p className={`mt-3 text-sm font-black ${done ? 'text-blue-950' : 'text-slate-500'}`}>{label}</p>
+                                            <p className={`mt-3 min-h-10 text-sm font-black leading-5 ${done ? 'text-blue-950' : 'text-slate-500'}`}>{label}</p>
                                         </div>
                                     );
                                 })}
@@ -1165,8 +1201,8 @@ function InfoBox({ label, value, helper }) {
     return (
         <div className="rounded-2xl border border-blue-100 bg-white p-5">
             <p className="text-xs font-black uppercase text-slate-400">{label}</p>
-            <p className="mt-2 font-black text-blue-950">{value}</p>
-            <p className="mt-1 text-sm text-slate-500">{helper}</p>
+            <p className="mt-2 break-words font-black text-blue-950">{value}</p>
+            <p className="mt-1 break-words text-sm text-slate-500">{helper}</p>
         </div>
     );
 }
@@ -1175,7 +1211,7 @@ function MetaRow({ label, value }) {
     return (
         <div className="flex items-center justify-between gap-4">
             <dt className="font-semibold text-slate-500">{label}</dt>
-            <dd className="font-black text-blue-950">{value}</dd>
+            <dd className="text-right font-black text-blue-950">{value}</dd>
         </div>
     );
 }

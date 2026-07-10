@@ -14,6 +14,7 @@ import WorkspaceSummary from '../components/dashboard/WorkspaceSummary';
 import ReviewsTab from '../components/dashboard/ReviewsTab';
 import NotificationsHistoryTab from '../components/dashboard/NotificationsHistoryTab';
 import RecordsTab from '../components/dashboard/RecordsTab';
+import AiKnowledgeTab from '../components/dashboard/AiKnowledgeTab';
 
 const roleLabels = {
     admin: 'Quản trị viên',
@@ -69,6 +70,7 @@ export default function Dashboard() {
             user.role === 'admin' && ['promotions', 'Khuyến mãi'],
             user.role === 'admin' && ['reviews', 'Đánh giá'],
             user.role === 'admin' && ['users', 'Tài khoản'],
+            user.role === 'admin' && ['aiKnowledge', 'AI Knowledge'],
             user.role === 'admin' && ['settings', 'Cài đặt']
         ].filter(Boolean);
     }, [user]);
@@ -177,6 +179,7 @@ export default function Dashboard() {
                     {activeTab === 'promotions' && user.role === 'admin' && <PromotionsTab />}
                     {activeTab === 'reviews' && user.role === 'admin' && <ReviewsTab />}
                     {activeTab === 'users' && user.role === 'admin' && <UsersTab />}
+                    {activeTab === 'aiKnowledge' && user.role === 'admin' && <AiKnowledgeTab />}
                     {activeTab === 'settings' && user.role === 'admin' && <SettingsTab />}
                 </div>
             </div>

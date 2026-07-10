@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -12,6 +12,8 @@ const formatCurrency = (value) => {
 };
 
 export default function ServicesTab() {
+    const serviceFormRef = useRef(null);
+    const serviceNameInputRef = useRef(null);
     const [services, setServices] = useState([]);
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -54,10 +56,18 @@ export default function ServicesTab() {
         setIsEditing(false);
     };
 
+    const revealServiceForm = () => {
+        window.setTimeout(() => {
+            serviceFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            serviceNameInputRef.current?.focus({ preventScroll: true });
+        }, 80);
+    };
+
     const openCreateForm = () => {
         setFormData({ ...emptyService, categoryId: categories.length > 0 ? categories[0].id : '' });
         setIsEditing(false);
         setShowForm(true);
+        revealServiceForm();
     };
 
     const openEditForm = (service) => {
@@ -73,6 +83,7 @@ export default function ServicesTab() {
         });
         setIsEditing(true);
         setShowForm(true);
+        revealServiceForm();
     };
 
     const closeForm = () => {
@@ -270,58 +281,60 @@ export default function ServicesTab() {
             </Panel>
 
             {showForm && (
-                <Panel>
-                    <form onSubmit={handleSubmit} className="p-6">
-                        <div className="mb-5 flex items-center justify-between gap-4">
-                            <div>
-                                <p className="text-sm font-black uppercase text-blue-700">{isEditing ? 'Cập nhật' : 'Tạo mới'}</p>
-                                <h3 className="text-xl font-black text-blue-950">{isEditing ? 'Sửa dịch vụ' : 'Thêm dịch vụ mới'}</h3>
-                            </div>
-                            <button type="button" onClick={closeForm} className="rounded-xl border border-blue-100 px-4 py-2 text-sm font-black text-slate-600 hover:bg-blue-50">Hủy</button>
-                        </div>
-
-                        <div className="grid gap-6 lg:grid-cols-[180px_1fr]">
-                            <div>
-                                <div className="grid h-40 place-items-center overflow-hidden rounded-2xl border border-blue-100 bg-blue-50">
-                                    {formData.image ? (
-                                        <img src={formData.image} alt="Dịch vụ" className="h-full w-full object-cover" />
-                                    ) : (
-                                        <span className="px-4 text-center text-sm font-bold text-slate-400">Chưa có ảnh dịch vụ</span>
-                                    )}
+                <div ref={serviceFormRef} className="scroll-mt-24">
+                    <Panel>
+                        <form onSubmit={handleSubmit} className="p-6">
+                            <div className="mb-5 flex items-center justify-between gap-4">
+                                <div>
+                                    <p className="text-sm font-black uppercase text-blue-700">{isEditing ? 'Cập nhật' : 'Tạo mới'}</p>
+                                    <h3 className="text-xl font-black text-blue-950">{isEditing ? 'Sửa dịch vụ' : 'Thêm dịch vụ mới'}</h3>
                                 </div>
-                                <label className="mt-3 block cursor-pointer rounded-xl border border-blue-100 bg-white px-4 py-2 text-center text-sm font-black text-blue-700 hover:bg-blue-50">
-                                    {uploadingImage ? 'Đang tải...' : 'Tải ảnh lên'}
-                                    <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={uploadingImage} />
-                                </label>
+                                <button type="button" onClick={closeForm} className="rounded-xl border border-blue-100 px-4 py-2 text-sm font-black text-slate-600 hover:bg-blue-50">Hủy</button>
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                                <Field label="Tên dịch vụ" required value={formData.name} onChange={value => setFormData({ ...formData, name: value })} />
-                                <Select label="Danh mục" value={formData.categoryId} onChange={value => setFormData({ ...formData, categoryId: value })}>
-                                    <option value="">Chọn danh mục</option>
-                                    {categories.map(category => (
-                                        <option key={category.id} value={category.id}>{category.name}</option>
-                                    ))}
-                                </Select>
-                                <Field label="Giá tiền (VNĐ)" type="number" min="0" required value={formData.price} onChange={value => setFormData({ ...formData, price: value })} />
-                                <Field label="Thời gian (phút)" type="number" min="0" value={formData.duration} onChange={value => setFormData({ ...formData, duration: value })} />
-                                <Select label="Trạng thái" value={formData.status} onChange={value => setFormData({ ...formData, status: value })}>
-                                    <option value="active">Đang mở</option>
-                                    <option value="inactive">Tạm ngưng</option>
-                                </Select>
-                                <div className="md:col-span-2 xl:col-span-3">
-                                    <Textarea label="Mô tả chi tiết" value={formData.description} onChange={value => setFormData({ ...formData, description: value })} />
+                            <div className="grid gap-6 lg:grid-cols-[180px_1fr]">
+                                <div>
+                                    <div className="grid h-40 place-items-center overflow-hidden rounded-2xl border border-blue-100 bg-blue-50">
+                                        {formData.image ? (
+                                            <img src={formData.image} alt="Dịch vụ" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <span className="px-4 text-center text-sm font-bold text-slate-400">Chưa có ảnh dịch vụ</span>
+                                        )}
+                                    </div>
+                                    <label className="mt-3 block cursor-pointer rounded-xl border border-blue-100 bg-white px-4 py-2 text-center text-sm font-black text-blue-700 hover:bg-blue-50">
+                                        {uploadingImage ? 'Đang tải...' : 'Tải ảnh lên'}
+                                        <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={uploadingImage} />
+                                    </label>
+                                </div>
+
+                                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                    <Field inputRef={serviceNameInputRef} label="Tên dịch vụ" required value={formData.name} onChange={value => setFormData({ ...formData, name: value })} />
+                                    <Select label="Danh mục" value={formData.categoryId} onChange={value => setFormData({ ...formData, categoryId: value })}>
+                                        <option value="">Chọn danh mục</option>
+                                        {categories.map(category => (
+                                            <option key={category.id} value={category.id}>{category.name}</option>
+                                        ))}
+                                    </Select>
+                                    <Field label="Giá tiền (VNĐ)" type="number" min="0" required value={formData.price} onChange={value => setFormData({ ...formData, price: value })} />
+                                    <Field label="Thời gian (phút)" type="number" min="0" value={formData.duration} onChange={value => setFormData({ ...formData, duration: value })} />
+                                    <Select label="Trạng thái" value={formData.status} onChange={value => setFormData({ ...formData, status: value })}>
+                                        <option value="active">Đang mở</option>
+                                        <option value="inactive">Tạm ngưng</option>
+                                    </Select>
+                                    <div className="md:col-span-2 xl:col-span-3">
+                                        <Textarea label="Mô tả chi tiết" value={formData.description} onChange={value => setFormData({ ...formData, description: value })} />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="mt-6 flex justify-end">
-                            <button type="submit" className="rounded-xl bg-blue-700 px-6 py-3 text-sm font-black text-white hover:bg-blue-800">
-                                {isEditing ? 'Lưu thay đổi' : 'Tạo dịch vụ'}
-                            </button>
-                        </div>
-                    </form>
-                </Panel>
+                            <div className="mt-6 flex justify-end">
+                                <button type="submit" className="rounded-xl bg-blue-700 px-6 py-3 text-sm font-black text-white hover:bg-blue-800">
+                                    {isEditing ? 'Lưu thay đổi' : 'Tạo dịch vụ'}
+                                </button>
+                            </div>
+                        </form>
+                    </Panel>
+                </div>
             )}
 
             <Panel>
@@ -404,11 +417,11 @@ export default function ServicesTab() {
                             <div className="mt-5 grid grid-cols-2 gap-3">
                                 <div className="rounded-xl bg-blue-50 p-3">
                                     <p className="text-xs font-black uppercase text-blue-500">Chi phí</p>
-                                    <p className="mt-1 font-black text-blue-800">{formatCurrency(service.price)}</p>
+                                    <p className="mt-1 whitespace-nowrap font-black tabular-nums text-blue-800">{formatCurrency(service.price)}</p>
                                 </div>
                                 <div className="rounded-xl bg-slate-50 p-3">
                                     <p className="text-xs font-black uppercase text-slate-400">Thời gian</p>
-                                    <p className="mt-1 font-black text-slate-800">{service.duration ? `${service.duration} phút` : 'Chưa rõ'}</p>
+                                    <p className="mt-1 whitespace-nowrap font-black text-slate-800">{service.duration ? `${service.duration} phút` : 'Chưa rõ'}</p>
                                 </div>
                             </div>
 
@@ -463,11 +476,11 @@ function SummaryCard({ label, value, tone }) {
     );
 }
 
-function Field({ label, value, onChange, ...props }) {
+function Field({ label, value, onChange, inputRef, ...props }) {
     return (
         <label className="block text-sm font-bold text-slate-700">
             {label}
-            <input value={value} onChange={event => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props} />
+            <input ref={inputRef} value={value} onChange={event => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props} />
         </label>
     );
 }

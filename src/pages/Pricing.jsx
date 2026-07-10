@@ -37,8 +37,8 @@ export default function Pricing() {
                         <div key={service.id} className="grid grid-cols-[1.3fr_0.7fr_0.6fr_0.7fr] items-center border-t border-blue-50 px-5 py-4 text-sm">
                             <span className="font-black text-blue-950">{service.name}</span>
                             <span className="text-slate-600">{service.categoryName || 'Nha khoa'}</span>
-                            <span className="font-bold text-slate-600">{service.duration || 30} phút</span>
-                            <span className="text-right font-black text-blue-700">{formatCurrency(service.price)}</span>
+                            <span className="whitespace-nowrap font-bold text-slate-600">{service.duration || 30} phút</span>
+                            <span className="whitespace-nowrap text-right font-black tabular-nums text-blue-700">{formatCurrency(service.price)}</span>
                         </div>
                     ))}
                 </div>

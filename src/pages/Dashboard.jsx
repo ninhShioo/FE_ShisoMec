@@ -16,6 +16,18 @@ import NotificationsHistoryTab from '../components/dashboard/NotificationsHistor
 import RecordsTab from '../components/dashboard/RecordsTab';
 import AiKnowledgeTab from '../components/dashboard/AiKnowledgeTab';
 
+const handleHorizontalWheel = (event) => {
+    const container = event.currentTarget;
+    const canScroll = container.scrollWidth > container.clientWidth;
+    if (!canScroll) return;
+
+    const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    if (!delta) return;
+
+    event.preventDefault();
+    container.scrollLeft += delta;
+};
+
 const roleLabels = {
     admin: 'Quản trị viên',
     staff: 'Nhân viên lễ tân',
@@ -43,7 +55,7 @@ const roleWorkflows = {
     dentist: [
         ['Lịch của tôi', 'Xem các lịch hẹn được phân công.'],
         ['Hồ sơ điều trị', 'Ghi chẩn đoán, đơn thuốc, ghi chú và tài liệu đính kèm.'],
-        ['Đăng ký nghỉ', 'Gửi yêu cầu nghỉ để admin/lễ tân duyệt và khóa lịch đặt khám.']
+        ['Lịch làm việc', 'Xem ca làm cố định, slot trong tuần và gửi yêu cầu nghỉ khi cần.']
     ]
 };
 
@@ -65,7 +77,7 @@ export default function Dashboard() {
             user.role === 'admin' && ['services', 'Dịch vụ'],
             (user.role === 'admin' || user.role === 'staff') && ['invoices', 'Hóa đơn'],
             (user.role === 'admin' || user.role === 'staff') && ['schedules', 'Lịch làm việc'],
-            user.role === 'dentist' && ['dayOff', 'Đăng ký nghỉ'],
+            user.role === 'dentist' && ['dayOff', 'Lịch làm việc'],
             ['notifications', 'Thông báo'],
             user.role === 'admin' && ['promotions', 'Khuyến mãi'],
             user.role === 'admin' && ['reviews', 'Đánh giá'],
@@ -148,7 +160,10 @@ export default function Dashboard() {
                         </div>
                     </div>
 
-                    <div className="flex gap-2 overflow-x-auto border-t border-blue-100 bg-white px-4 py-3 sm:px-6">
+                    <div
+                        className="flex gap-2 overflow-x-auto overscroll-x-contain scroll-smooth border-t border-blue-100 bg-white px-4 py-3 sm:px-6"
+                        onWheel={handleHorizontalWheel}
+                    >
                         {tabs.map(([key, label]) => (
                             <button
                                 key={key}

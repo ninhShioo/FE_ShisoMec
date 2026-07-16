@@ -33,9 +33,12 @@ export default function InvoicesTab() {
     const location = useLocation();
     const navigate = useNavigate();
     const [invoices, setInvoices] = useState([]);
+    const [promotions, setPromotions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedMethods, setSelectedMethods] = useState({});
     const [paymentAmounts, setPaymentAmounts] = useState({});
+    const [selectedPromotions, setSelectedPromotions] = useState({});
+    const [applyingPromotion, setApplyingPromotion] = useState({});
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -55,8 +58,14 @@ export default function InvoicesTab() {
     const fetchInvoices = async () => {
         try {
             setLoading(true);
-            const res = await api.get('/invoices');
-            setInvoices(res.data.data || []);
+            const [invoiceRes, promotionRes] = await Promise.all([
+                api.get('/invoices'),
+                api.get('/promotions/active')
+            ]);
+            const nextInvoices = invoiceRes.data.data || [];
+            setInvoices(nextInvoices);
+            setPromotions(promotionRes.data.data || []);
+            setSelectedPromotions(Object.fromEntries(nextInvoices.map(invoice => [invoice.id, invoice.promotionId ? String(invoice.promotionId) : ''])));
         } catch {
             toast.error('Không thể tải danh sách hóa đơn.');
         } finally {
@@ -98,6 +107,10 @@ export default function InvoicesTab() {
         setInvoices(current => current.map(invoice => (
             invoice.id === nextInvoice.id ? { ...invoice, ...nextInvoice } : invoice
         )));
+        setSelectedPromotions(current => ({
+            ...current,
+            [nextInvoice.id]: nextInvoice.promotionId ? String(nextInvoice.promotionId) : ''
+        }));
         setSelectedInvoice(current => (
             current?.id === nextInvoice.id ? { ...current, ...nextInvoice } : current
         ));
@@ -170,6 +183,21 @@ export default function InvoicesTab() {
             });
         } catch (err) {
             toast.error(err.response?.data?.message || 'Không thể tạo thanh toán VNPay.');
+        }
+    };
+
+    const handleApplyPromotion = async (invoice) => {
+        const promotionId = selectedPromotions[invoice.id] || null;
+        try {
+            setApplyingPromotion(current => ({ ...current, [invoice.id]: true }));
+            const res = await api.put(`/invoices/${invoice.id}/promotion`, { promotionId });
+            const nextInvoice = res.data.data;
+            if (nextInvoice) mergeInvoice(nextInvoice);
+            toast.success(res.data.message || (promotionId ? 'Đã áp voucher.' : 'Đã bỏ voucher.'));
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không thể áp voucher cho hóa đơn.');
+        } finally {
+            setApplyingPromotion(current => ({ ...current, [invoice.id]: false }));
         }
     };
 
@@ -264,15 +292,15 @@ export default function InvoicesTab() {
 
             <Panel>
                 <div className="overflow-x-auto">
-                    <table className="min-w-[1260px] divide-y divide-blue-100">
+                    <table className="w-full min-w-[1180px] table-fixed divide-y divide-blue-100">
                         <thead>
                             <tr className="bg-blue-50/60 text-left text-xs font-black uppercase text-slate-500">
-                                <th className="w-[120px] px-6 py-3">Mã hóa đơn</th>
-                                <th className="w-[190px] px-6 py-3">Khách hàng</th>
-                                <th className="w-[350px] px-6 py-3">Tổng tiền</th>
-                                <th className="w-[260px] px-6 py-3">Thanh toán</th>
-                                <th className="w-[140px] px-6 py-3 text-center">Trạng thái</th>
-                                <th className="w-[220px] px-6 py-3 text-center">Thao tác</th>
+                                <th className="w-[95px] px-5 py-3">Mã hóa đơn</th>
+                                <th className="w-[170px] px-5 py-3">Khách hàng</th>
+                                <th className="w-[305px] px-5 py-3">Tổng tiền</th>
+                                <th className="w-[285px] px-5 py-3">Thanh toán</th>
+                                <th className="w-[145px] px-5 py-3 text-center">Trạng thái</th>
+                                <th className="w-[180px] px-5 py-3 text-center">Thao tác</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-blue-50">
@@ -284,15 +312,20 @@ export default function InvoicesTab() {
                                     id={`invoice-row-${invoice.id}`}
                                     className={`hover:bg-blue-50/40 ${getHighlightClass(highlight.type === 'invoice' && highlight.id === String(invoice.id))}`}
                                 >
-                                    <td className="px-6 py-4 font-black text-slate-500">INV-{invoice.id}</td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-5 py-4 align-middle font-black text-slate-500">INV-{invoice.id}</td>
+                                    <td className="px-5 py-4 align-middle">
                                         <p className="font-black text-blue-950">{invoice.patientName}</p>
                                         {invoice.patientPhone && <p className="text-xs text-slate-500">{invoice.patientPhone}</p>}
                                     </td>
-                                    <td className="px-6 py-4 align-top">
+                                    <td className="px-5 py-4 align-middle">
                                         <p className="font-black text-blue-700"><MoneyText value={invoice.totalAmount} /></p>
                                         {Number(invoice.discountAmount || 0) > 0 && (
                                             <p className="text-xs font-bold text-emerald-600">Giảm <MoneyText value={invoice.discountAmount} /></p>
+                                        )}
+                                        {invoice.promotionName && (
+                                            <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-black text-emerald-700">
+                                                {invoice.promotionName} -{Number(invoice.promotionDiscountPercent || 0)}%
+                                            </p>
                                         )}
                                         <p className="text-xs text-slate-500">Đã thu <MoneyText value={invoice.paidAmount} /></p>
                                         {Number(invoice.outstandingAmount || 0) > 0 && (
@@ -309,18 +342,42 @@ export default function InvoicesTab() {
                                             </div>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4 text-sm text-slate-700">
+                                    <td className="px-5 py-4 align-middle text-sm text-slate-700">
                                         {invoice.status === 'paid' ? (
                                             <div>
                                                 <p className="font-black text-slate-800">{paymentLabels[invoice.lastPaymentMethod || invoice.paymentMethod] || invoice.lastPaymentMethod || invoice.paymentMethod}</p>
                                                 {invoice.paidAt && <p className="text-xs text-slate-400">{new Date(invoice.paidAt).toLocaleString('vi-VN')}</p>}
                                             </div>
                                         ) : (
-                                            <div>
+                                            <div className="space-y-2">
+                                            {invoice.status === 'unpaid' && (
+                                                <div className="grid grid-cols-[1fr_auto] gap-2">
+                                                    <select
+                                                        value={selectedPromotions[invoice.id] ?? (invoice.promotionId ? String(invoice.promotionId) : '')}
+                                                        onChange={(event) => setSelectedPromotions({ ...selectedPromotions, [invoice.id]: event.target.value })}
+                                                        className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500"
+                                                    >
+                                                        <option value="">Không dùng voucher</option>
+                                                        {promotions.map((promotion) => (
+                                                            <option key={promotion.id} value={promotion.id}>
+                                                                {promotion.name} -{promotion.discountPercent}%
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <button
+                                                        type="button"
+                                                        disabled={Boolean(applyingPromotion[invoice.id])}
+                                                        onClick={() => handleApplyPromotion(invoice)}
+                                                        className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                                    >
+                                                        {applyingPromotion[invoice.id] ? '...' : 'Áp'}
+                                                    </button>
+                                                </div>
+                                            )}
                                             <select
                                                 value={getSelectedMethod(invoice)}
                                                 onChange={(event) => setSelectedMethods({ ...selectedMethods, [invoice.id]: event.target.value })}
-                                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500"
+                                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-500"
                                             >
                                                 <option value="cash">Tiền mặt</option>
                                                 <option value="card">Thẻ</option>
@@ -333,32 +390,32 @@ export default function InvoicesTab() {
                                                 value={paymentAmounts[invoice.id] || ''}
                                                 onChange={(event) => setPaymentAmounts({ ...paymentAmounts, [invoice.id]: event.target.value })}
                                                 placeholder={`Tối đa ${formatCurrency(invoice.outstandingAmount || invoice.totalAmount)}`}
-                                                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
                                             />
                                             </div>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4 text-center">
+                                    <td className="px-5 py-4 text-center align-middle">
                                         <span className={`inline-flex min-w-[112px] justify-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ${invoiceStatusMeta(invoice.status)[1]}`}>
                                             {invoiceStatusMeta(invoice.status)[0]}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex min-w-max flex-nowrap items-center justify-center gap-2">
-                                        <InvoiceIconAction label="Chi tiết" icon="eye" tone="blue" onClick={() => openInvoiceDetail(invoice)} />
-                                        {['unpaid', 'partial'].includes(invoice.status) ? (
-                                            <>
-                                                {getSelectedMethod(invoice) === 'transfer' && (
-                                                    <InvoiceIconAction label="VNPay/QR" icon="qr" tone="emerald" onClick={() => handleVnpayPayment(invoice)} />
-                                                )}
-                                                <InvoiceIconAction label="Xác nhận thu tiền" icon="wallet" tone="solidBlue" onClick={() => handlePay(invoice.id)} />
-                                            </>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">
-                                                <Icon name="check" className="h-3.5 w-3.5" />
-                                                Đã hoàn tất
-                                            </span>
-                                        )}
+                                    <td className="px-5 py-4 text-center align-middle">
+                                        <div className="mx-auto inline-flex max-w-full items-center justify-center gap-1.5 rounded-2xl border border-blue-100 bg-white/90 p-1.5 shadow-sm">
+                                            <InvoiceIconAction label="Chi tiết" shortLabel="Xem" icon="eye" tone="blue" onClick={() => openInvoiceDetail(invoice)} />
+                                            {['unpaid', 'partial'].includes(invoice.status) ? (
+                                                <>
+                                                    {getSelectedMethod(invoice) === 'transfer' && (
+                                                        <InvoiceIconAction label="VNPay/QR" shortLabel="QR" icon="qr" tone="emerald" onClick={() => handleVnpayPayment(invoice)} />
+                                                    )}
+                                                    <InvoiceIconAction label="Thu tiền" shortLabel="Thu" icon="wallet" tone="solidBlue" onClick={() => handlePay(invoice.id)} />
+                                                </>
+                                            ) : (
+                                                <span title="Đã hoàn tất" className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 text-xs font-black text-emerald-700">
+                                                    <Icon name="check" className="h-4 w-4" />
+                                                    OK
+                                                </span>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -516,6 +573,9 @@ function InvoiceDetailModal({ invoice, loading, onClose }) {
                     <section className="grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2">
                         <Meta label="Tạm tính" value={formatCurrency(invoice.subtotalAmount)} />
                         <Meta label="Giảm giá" value={formatCurrency(invoice.discountAmount)} />
+                        {invoice.promotionName && (
+                            <Meta label="Voucher" value={`${invoice.promotionName} -${Number(invoice.promotionDiscountPercent || 0)}%`} />
+                        )}
                         <Meta label="Đã thu" value={formatCurrency(invoice.paidAmount)} />
                         <Meta label="Còn lại" value={formatCurrency(invoice.outstandingAmount)} strong />
                     </section>
@@ -553,12 +613,12 @@ function Info({ label, value }) {
     );
 }
 
-function InvoiceIconAction({ label, icon, tone = 'blue', onClick }) {
+function InvoiceIconAction({ label, shortLabel, icon, tone = 'blue', onClick }) {
     const tones = {
-        blue: 'border border-blue-100 bg-white text-blue-700 hover:bg-blue-50',
-        emerald: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
-        solidBlue: 'bg-blue-700 text-white hover:bg-blue-800',
-        slate: 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+        blue: 'border-blue-100 bg-blue-50 text-blue-700 hover:border-blue-200 hover:bg-blue-100',
+        emerald: 'border-emerald-100 bg-emerald-50 text-emerald-700 hover:border-emerald-200 hover:bg-emerald-100',
+        solidBlue: 'border-blue-700 bg-blue-700 text-white hover:border-blue-800 hover:bg-blue-800',
+        slate: 'border-slate-100 bg-slate-50 text-slate-600 hover:border-slate-200 hover:bg-slate-100'
     };
 
     return (
@@ -567,9 +627,10 @@ function InvoiceIconAction({ label, icon, tone = 'blue', onClick }) {
             onClick={onClick}
             title={label}
             aria-label={label}
-            className={`grid h-10 w-10 place-items-center rounded-full transition ${tones[tone] || tones.blue}`}
+            className={`inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 text-xs font-black transition ${tones[tone] || tones.blue}`}
         >
             <Icon name={icon} className="h-4 w-4" />
+            <span>{shortLabel || label}</span>
         </button>
     );
 }

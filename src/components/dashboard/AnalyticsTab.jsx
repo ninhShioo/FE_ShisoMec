@@ -57,6 +57,8 @@ const compactCurrency = (value) => {
     return String(amount);
 };
 
+const formatPercent = (value) => `${Number(value || 0).toFixed(1).replace('.0', '')}%`;
+
 export default function AnalyticsTab() {
     const [stats, setStats] = useState({
         totalPatients: 0,
@@ -106,6 +108,22 @@ export default function AnalyticsTab() {
         [revenueView]
     );
     const activeRevenueData = revenueSets[revenueView] || [];
+    const serviceUsageTotal = useMemo(
+        () => pieData.reduce((sum, item) => sum + Number(item.value || 0), 0),
+        [pieData]
+    );
+    const pieDataWithPercent = useMemo(
+        () => pieData.map((item) => {
+            const percent = serviceUsageTotal ? (Number(item.value || 0) / serviceUsageTotal) * 100 : 0;
+            return {
+                ...item,
+                percent,
+                percentLabel: formatPercent(percent),
+                legendLabel: `${item.name} · ${formatPercent(percent)}`
+            };
+        }),
+        [pieData, serviceUsageTotal]
+    );
 
     if (loading) {
         return (
@@ -162,22 +180,71 @@ export default function AnalyticsTab() {
                         <h3 className="text-lg font-black text-blue-950">Dịch vụ được sử dụng</h3>
                         <p className="mt-1 text-sm text-slate-500">Dựa trên dịch vụ gắn với lịch hẹn.</p>
                     </div>
-                    <div className="h-80 p-5">
-                        {pieData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={pieData} cx="50%" cy="45%" innerRadius={58} outerRadius={92} paddingAngle={4} dataKey="value">
-                                        {pieData.map((entry, index) => (
-                                            <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                                    <RechartsTooltip
-                                        formatter={(value) => [`${value} lượt`, 'Sử dụng']}
-                                        contentStyle={{ borderRadius: '14px', border: '1px solid #dbeafe' }}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
+                    <div className="p-5">
+                        {pieDataWithPercent.length > 0 ? (
+                            <div className="grid gap-5 lg:grid-cols-[240px_1fr] xl:grid-cols-1 2xl:grid-cols-[240px_1fr]">
+                                <div className="relative mx-auto h-64 w-full max-w-[260px]">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={pieDataWithPercent}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={66}
+                                                outerRadius={104}
+                                                paddingAngle={4}
+                                                dataKey="value"
+                                                labelLine={false}
+                                            >
+                                                {pieDataWithPercent.map((entry, index) => (
+                                                    <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <RechartsTooltip
+                                                formatter={(value, name, props) => [
+                                                    `${value} lượt · ${props?.payload?.percentLabel || '0%'}`,
+                                                    'Sử dụng'
+                                                ]}
+                                                contentStyle={{ borderRadius: '14px', border: '1px solid #dbeafe' }}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
+                                        <div>
+                                            <p className="text-3xl font-black text-blue-950">
+                                                {formatPercent(pieDataWithPercent[0]?.percent)}
+                                            </p>
+                                            <p className="mt-1 text-[11px] font-black uppercase text-slate-400">
+                                                Cao nhất
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 self-center">
+                                    {pieDataWithPercent.map((item, index) => (
+                                        <div
+                                            key={item.name}
+                                            title={`${item.name} - ${item.percentLabel}`}
+                                            className="group relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl bg-slate-50 px-3 py-2"
+                                        >
+                                            <div className="flex min-w-0 items-center gap-2">
+                                                <span
+                                                    className="h-3 w-3 shrink-0 rounded-full"
+                                                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                                                />
+                                                <span className="truncate text-sm font-bold text-slate-700">{item.name}</span>
+                                            </div>
+                                            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-blue-700">
+                                                {item.percentLabel}
+                                            </span>
+                                            <span className="pointer-events-none absolute left-3 top-full z-20 mt-2 hidden max-w-[280px] rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-lg group-hover:block">
+                                                {item.name} · {item.percentLabel}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         ) : (
                             <div className="grid h-full place-items-center text-center text-sm font-bold text-slate-400">
                                 Chưa có dữ liệu sử dụng dịch vụ.

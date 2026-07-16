@@ -202,62 +202,87 @@ function Home() {
       : { href: telHref, label: 'Gọi hotline' };
 
   const stats = [
-    ['15+', 'Năm kinh nghiệm', 'Trong lĩnh vực nha khoa'],
-    [services.length || '-', 'Dịch vụ', 'Lấy từ hệ thống'],
-    [dentists.length || '-', 'Bác sĩ', 'Đang hoạt động'],
-    ['99%', 'Hài lòng', 'Chăm sóc tận tâm']
+    ['24/7', 'Tư vấn đặt khám', 'Hotline luôn hiển thị'],
+    [services.length || '-', 'Dịch vụ nha khoa', 'Lấy từ hệ thống'],
+    [dentists.length || '-', 'Bác sĩ phụ trách', 'Đang hoạt động'],
+    ['4 bước', 'Quy trình khám', 'Rõ ràng từ đặt lịch']
+  ];
+
+  const quickBookingItems = [
+    { title: 'Đặt lịch tại phòng khám', desc: 'Chọn ngày giờ, dịch vụ và bác sĩ', to: '/book-appointment', tone: 'bg-blue-50 text-blue-700' },
+    { title: 'Đặt khám theo bác sĩ', desc: 'Xem bác sĩ đang hoạt động', to: '/doctors', tone: 'bg-cyan-50 text-cyan-700' },
+    { title: 'Bảng giá dịch vụ', desc: 'Tham khảo chi phí trước khi đặt', to: '/pricing', tone: 'bg-[#FFF8F0] text-blue-700' },
+    { title: 'Hồ sơ của tôi', desc: 'Theo dõi lịch, hóa đơn, tái khám', to: user ? '/profile' : '/login', tone: 'bg-[#FFE5EC] text-rose-700' },
+    { title: 'Tư vấn dịch vụ', desc: 'Chat AI hoặc gặp nhân viên hỗ trợ', to: '/#booking', tone: 'bg-slate-50 text-slate-700' },
+    { title: 'Liên hệ phòng khám', desc: clinicInfo.phone || '0869 800 318', to: '/contact', tone: 'bg-blue-50 text-blue-800' }
   ];
 
   return (
     <main className="bg-[#F8FCFC] text-slate-900">
-      <section className="relative overflow-hidden bg-[linear-gradient(105deg,#F8FCFC_0%,#FFFFFF_48%,#EAF7F5_100%)]">
-        <div className="absolute inset-x-0 bottom-0 h-32 bg-white" />
-        <div className="relative mx-auto grid min-h-[560px] max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[0.94fr_1.06fr] lg:px-8">
+      <section className="relative overflow-hidden bg-[linear-gradient(115deg,#EAF7F5_0%,#FFFFFF_46%,#F8FCFC_100%)]">
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-white" />
+        <div className="relative mx-auto grid min-h-[560px] max-w-7xl items-center gap-8 px-4 pb-32 pt-10 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:px-8">
           <div className="relative z-10 max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white px-4 py-2 text-xs font-black uppercase text-blue-700 shadow-sm">
+              Phenikaa Dental
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+              Đặt khám nhanh
+            </div>
             <h1 className="mt-5 text-4xl font-black leading-[1.05] tracking-normal text-blue-950 sm:text-5xl lg:text-6xl">
-              Nụ cười khỏe đẹp chuẩn phòng khám hiện đại
+              Đặt lịch nha khoa rõ giờ, rõ bác sĩ, rõ dịch vụ
             </h1>
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-700 sm:text-lg">
-              Đội ngũ bác sĩ tiếp nhận lịch rõ ràng, dịch vụ được quản lý từ hệ thống, quy trình khám và hồ sơ điều trị minh bạch cho từng khách hàng.
+              Chọn dịch vụ, bác sĩ và khung giờ trống trực tiếp từ hệ thống. Lễ tân xác nhận lịch, bác sĩ cập nhật hồ sơ khám và lịch tái khám sau điều trị.
             </p>
 
-            <div className="mt-8 grid gap-4 sm:grid-cols-3">
-              {[
-                ['Bác sĩ chuyên môn', 'Theo lịch được phân công'],
-                ['Dịch vụ rõ ràng', 'Giá và thời lượng minh bạch'],
-                ['Hồ sơ điều trị', 'Theo dõi sau mỗi lần khám']
-              ].map(([title, desc]) => (
-                <div key={title} className="flex items-start gap-3">
-                  <span className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full border border-blue-200 bg-white text-sm font-black text-blue-700">✓</span>
-                  <div>
-                    <p className="text-sm font-black text-blue-950">{title}</p>
-                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{desc}</p>
-                  </div>
+            <div className="mt-6 rounded-2xl border border-blue-100 bg-white p-3 shadow-xl shadow-blue-100">
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                <div className="rounded-xl bg-blue-50 px-4 py-3">
+                  <p className="text-xs font-black uppercase text-slate-500">Bạn muốn khám gì?</p>
+                  <p className="mt-1 text-sm font-black text-blue-950">Cạo vôi, trám răng, nhổ răng khôn, niềng răng...</p>
                 </div>
-              ))}
+                {primaryAction.to ? (
+                  <Link to={primaryAction.to} className="inline-flex items-center justify-center rounded-xl bg-blue-700 px-5 py-3 text-sm font-black uppercase text-white shadow-lg shadow-blue-100 hover:bg-blue-800">
+                    {primaryAction.label}
+                  </Link>
+                ) : (
+                  <a href={primaryAction.href} className="inline-flex items-center justify-center rounded-xl bg-blue-700 px-5 py-3 text-sm font-black uppercase text-white shadow-lg shadow-blue-100 hover:bg-blue-800">
+                    {primaryAction.label}
+                  </a>
+                )}
+              </div>
             </div>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-5 flex flex-wrap items-center gap-3 text-sm font-bold text-slate-600">
+              <span className="rounded-full bg-white px-4 py-2 shadow-sm">Hotline {clinicInfo.phone}</span>
+              <span className="rounded-full bg-white px-4 py-2 shadow-sm">{clinicInfo.openingHours}</span>
+            </div>
+
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               {primaryAction.to ? (
-                <Link to={primaryAction.to} className="rounded-lg bg-blue-700 px-6 py-3.5 text-center text-sm font-black uppercase text-white shadow-xl shadow-blue-200 hover:bg-blue-800">
+                <Link to={primaryAction.to} className="rounded-xl bg-blue-700 px-6 py-3.5 text-center text-sm font-black uppercase text-white shadow-xl shadow-blue-200 hover:bg-blue-800">
                   {primaryAction.label}
                 </Link>
               ) : (
-                <a href={primaryAction.href} className="rounded-lg bg-blue-700 px-6 py-3.5 text-center text-sm font-black uppercase text-white shadow-xl shadow-blue-200 hover:bg-blue-800">
+                <a href={primaryAction.href} className="rounded-xl bg-blue-700 px-6 py-3.5 text-center text-sm font-black uppercase text-white shadow-xl shadow-blue-200 hover:bg-blue-800">
                   {primaryAction.label}
                 </a>
               )}
-              <Link to="/services" className="rounded-lg border border-blue-300 bg-white px-6 py-3.5 text-center text-sm font-black uppercase text-blue-700 shadow-sm hover:bg-blue-50">
+              <Link to="/services" className="rounded-xl border border-blue-300 bg-white px-6 py-3.5 text-center text-sm font-black uppercase text-blue-700 shadow-sm hover:bg-blue-50">
                 Xem dịch vụ
               </Link>
             </div>
           </div>
 
           <div className="relative min-h-[420px]">
-            <img src={heroImage} alt="Không gian phòng khám nha khoa pastel hiện đại" className="absolute inset-0 h-full w-full rounded-[1.25rem] object-cover object-center shadow-xl shadow-blue-100" />
-            <div className="absolute bottom-8 right-5 w-[260px] rounded-2xl border border-white/80 bg-white/95 p-5 shadow-lg">
-              <p className="text-base font-black text-blue-950">Tư vấn miễn phí</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Chọn dịch vụ, ngày khám và gửi yêu cầu đặt lịch online.</p>
+            <img src={heroImage} alt="Không gian phòng khám nha khoa pastel hiện đại" className="absolute inset-0 h-full w-full rounded-[1.5rem] object-cover object-center shadow-xl shadow-blue-100" />
+            <div className="absolute left-5 top-5 rounded-2xl border border-white/80 bg-white/95 p-4 shadow-lg">
+              <p className="text-xs font-black uppercase text-slate-500">Quy trình</p>
+              <p className="mt-1 text-sm font-black text-blue-950">Đặt lịch → xác nhận → khám → hồ sơ</p>
+            </div>
+            <div className="absolute bottom-8 right-5 w-[280px] rounded-2xl border border-white/80 bg-white/95 p-5 shadow-lg">
+              <p className="text-base font-black text-blue-950">Bác sĩ đang tiếp nhận</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Lịch trống được kiểm tra theo ca làm việc và dịch vụ đã chọn.</p>
               <div className="mt-4 flex items-center gap-2">
                 {featuredDentists.slice(0, 4).map((doctor, index) => (
                   <div key={doctor.id} className={`grid h-8 w-8 place-items-center rounded-full border-2 border-white text-xs font-black ${doctorTones[index % doctorTones.length]}`}>
@@ -271,7 +296,19 @@ function Home() {
         </div>
 
         <div className="relative mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
-          <div className="grid overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-xl shadow-blue-100 md:grid-cols-4">
+          <div className="grid gap-3 rounded-3xl border border-blue-100 bg-white p-4 shadow-xl shadow-blue-100 sm:grid-cols-2 lg:grid-cols-6">
+            {quickBookingItems.map((item) => (
+              <Link key={item.title} to={item.to} className="group rounded-2xl border border-blue-50 bg-white p-4 transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-lg">
+                <span className={`grid h-11 w-11 place-items-center rounded-2xl text-lg font-black ${item.tone}`}>
+                  {item.title.slice(0, 1)}
+                </span>
+                <h3 className="mt-4 text-sm font-black leading-5 text-blue-950 group-hover:text-blue-700">{item.title}</h3>
+                <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">{item.desc}</p>
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-5 grid overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-md md:grid-cols-4">
             {stats.map(([value, label, desc]) => (
               <div key={label} className="border-b border-blue-100 p-6 md:border-b-0 md:border-r last:border-r-0">
                 <p className="text-3xl font-black text-blue-700">{value}</p>
@@ -288,26 +325,37 @@ function Home() {
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
               <p className="text-sm font-black uppercase text-blue-700">Dịch vụ nổi bật</p>
-              <h2 className="mt-2 text-3xl font-black text-blue-950">Giải pháp toàn diện cho nụ cười của bạn</h2>
+              <h2 className="mt-2 text-3xl font-black text-blue-950">Chọn nhanh theo nhu cầu khám</h2>
             </div>
-            <Link to="/services" className="rounded-lg border border-blue-300 px-5 py-3 text-center text-sm font-black uppercase text-blue-700 hover:bg-blue-50">
+            <Link to="/services" className="rounded-xl border border-blue-300 px-5 py-3 text-center text-sm font-black uppercase text-blue-700 hover:bg-blue-50">
               Xem tất cả dịch vụ
             </Link>
           </div>
 
-          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {featuredServices.length ? featuredServices.map((service, index) => (
-              <article key={service.id} className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm shadow-blue-50 transition hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-100">
-                <div className={`overflow-hidden rounded-2xl bg-gradient-to-br ${serviceVisuals[index % serviceVisuals.length]}`}>
-                  <img src={service.displayImage || service.image || service.defaultImage} alt={service.name} className="h-28 w-full object-cover" />
+              <article key={service.id} className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm shadow-blue-50 transition hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-100">
+                <div className={`flex h-28 items-center justify-between bg-gradient-to-br p-5 ${serviceVisuals[index % serviceVisuals.length]}`}>
+                  <div>
+                    <p className="text-xs font-black uppercase opacity-80">{service.categoryName || 'Nha khoa'}</p>
+                    <p className="mt-2 max-w-[220px] text-lg font-black leading-6 text-blue-950">{service.name}</p>
+                  </div>
+                  <span className="grid h-16 w-16 place-items-center rounded-2xl bg-white/80 text-2xl font-black text-blue-700">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
                 </div>
-                <p className="mt-4 text-xs font-black uppercase text-blue-700">{service.categoryName || 'Nha khoa'}</p>
-                <h3 className="mt-1 min-h-12 text-sm font-black uppercase leading-5 text-blue-950">{service.name}</h3>
-                <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">{service.description || 'Dịch vụ đang tiếp nhận lịch hẹn.'}</p>
-                <p className="mt-3 text-xs font-black text-blue-700">{formatCurrency(service.price)}</p>
+                <div className="p-5">
+                  <p className="line-clamp-2 min-h-[48px] text-sm font-semibold leading-6 text-slate-500">{service.description || 'Dịch vụ đang tiếp nhận lịch hẹn.'}</p>
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <p className="text-sm font-black text-blue-700">{formatCurrency(service.price)}</p>
+                    <Link to={`/book-appointment?serviceId=${service.id}`} className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100">
+                      Đặt lịch
+                    </Link>
+                  </div>
+                </div>
               </article>
             )) : (
-              <div className="rounded-2xl border border-dashed border-blue-200 bg-blue-50 p-6 text-sm font-bold text-slate-600 sm:col-span-2 lg:col-span-3 xl:col-span-6">
+              <div className="rounded-2xl border border-dashed border-blue-200 bg-blue-50 p-6 text-sm font-bold text-slate-600 sm:col-span-2 lg:col-span-3">
                 {homeLoading ? 'Đang tải dịch vụ...' : 'Chưa có dịch vụ đang hiển thị.'}
               </div>
             )}

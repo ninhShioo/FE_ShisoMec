@@ -39,6 +39,16 @@ const MAX_APPOINTMENT_DURATION_MINUTES = 180;
 
 const getServiceDurationValue = (service = {}) => Math.max(Number(service.duration || 30), 30);
 
+const buildDateOptions = () => Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() + index + 1);
+    const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const weekday = date.toLocaleDateString('vi-VN', { weekday: 'short' });
+    const day = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+
+    return { value, weekday, day };
+});
+
 export default function BookAppointment() {
     const { user, loading: authLoading } = useContext(AuthContext);
     const navigate = useNavigate();
@@ -58,9 +68,12 @@ export default function BookAppointment() {
     const [search, setSearch] = useState('');
     const [error, setError] = useState('');
     const [loadingSlots, setLoadingSlots] = useState(false);
+    const [loadingDentistAvailability, setLoadingDentistAvailability] = useState(false);
+    const [dentistAvailability, setDentistAvailability] = useState({});
     const [submitting, setSubmitting] = useState(false);
 
     const today = useMemo(() => getTodayValue(), []);
+    const dateOptions = useMemo(() => buildDateOptions(), []);
 
     useEffect(() => {
         if (authLoading) {
@@ -85,7 +98,7 @@ export default function BookAppointment() {
                 const nextDentists = dentistRes.data.data || [];
                 setServices(nextServices);
                 setDentists(nextDentists);
-                setDentistId((current) => current || (nextDentists.length ? String(nextDentists[0].id) : ''));
+                setDentistId((current) => current || '');
             } catch {
                 setError('Không thể tải dữ liệu đặt lịch. Vui lòng thử lại sau.');
             }
@@ -93,6 +106,57 @@ export default function BookAppointment() {
 
         fetchData();
     }, [authLoading, user, navigate, location.pathname, location.search]);
+
+    useEffect(() => {
+        if (!date || dentists.length === 0) {
+            setDentistAvailability({});
+            return;
+        }
+
+        let cancelled = false;
+
+        const fetchDentistAvailability = async () => {
+            setLoadingDentistAvailability(true);
+            try {
+                const results = await Promise.all(dentists.map(async (dentist) => {
+                    try {
+                        const res = await api.get('/appointments/slots', {
+                            params: {
+                                date,
+                                dentistId: dentist.id,
+                                serviceIds: selectedServices.join(',')
+                            }
+                        });
+                        const nextSlots = res.data.data || [];
+                        const availableSlots = nextSlots.filter((slot) => slot.available);
+
+                        return [
+                            String(dentist.id),
+                            {
+                                total: nextSlots.length,
+                                available: availableSlots.length,
+                                firstTime: availableSlots[0]?.time || ''
+                            }
+                        ];
+                    } catch {
+                        return [String(dentist.id), { total: 0, available: 0, firstTime: '' }];
+                    }
+                }));
+
+                if (!cancelled) {
+                    setDentistAvailability(Object.fromEntries(results));
+                }
+            } finally {
+                if (!cancelled) setLoadingDentistAvailability(false);
+            }
+        };
+
+        fetchDentistAvailability();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [date, dentists, selectedServices]);
 
     useEffect(() => {
         if (!date || !dentistId) {
@@ -137,6 +201,15 @@ export default function BookAppointment() {
     const selectedDentist = dentists.find((dentist) => String(dentist.id) === String(dentistId));
     const hasReachedServiceLimit = selectedServices.length >= MAX_SERVICES_PER_APPOINTMENT;
     const hasReachedDurationLimit = totalDuration >= MAX_APPOINTMENT_DURATION_MINUTES;
+    const sortedDentists = useMemo(() => {
+        if (!date) return dentists;
+
+        return [...dentists].sort((first, second) => {
+            const firstAvailability = dentistAvailability[String(first.id)]?.available ?? 0;
+            const secondAvailability = dentistAvailability[String(second.id)]?.available ?? 0;
+            return secondAvailability - firstAvailability;
+        });
+    }, [dentists, date, dentistAvailability]);
 
     const categories = useMemo(() => {
         const unique = new Set();
@@ -222,9 +295,10 @@ export default function BookAppointment() {
     };
 
     const steps = [
+        { label: 'Ngày', ready: Boolean(date) },
         { label: 'Dịch vụ', ready: selectedServices.length > 0 },
         { label: 'Bác sĩ', ready: Boolean(dentistId) },
-        { label: 'Thời gian', ready: Boolean(date && time) }
+        { label: 'Giờ khám', ready: Boolean(time) }
     ];
 
     if (authLoading) {
@@ -253,7 +327,7 @@ export default function BookAppointment() {
                             </p>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 rounded-2xl border border-blue-100 bg-blue-50/70 p-2">
+                        <div className="grid grid-cols-4 gap-2 rounded-2xl border border-blue-100 bg-blue-50/70 p-2">
                             {steps.map((step, index) => (
                                 <div
                                     key={step.label}
@@ -277,6 +351,44 @@ export default function BookAppointment() {
                             {error}
                         </div>
                     )}
+
+                    <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Ngày khám</p>
+                                <h2 className="mt-1 text-xl font-black text-slate-900">Chọn ngày như chọn suất</h2>
+                            </div>
+                            <label className="block sm:w-56">
+                                <span className="sr-only">Ngày khám</span>
+                                <input
+                                    type="date"
+                                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                    value={date}
+                                    onChange={(event) => setDate(event.target.value)}
+                                    min={today}
+                                    required
+                                />
+                            </label>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+                            {dateOptions.map((item) => (
+                                <button
+                                    key={item.value}
+                                    type="button"
+                                    onClick={() => setDate(item.value)}
+                                    className={`rounded-2xl border px-3 py-3 text-center transition ${
+                                        date === item.value
+                                            ? 'border-blue-600 bg-blue-700 text-white shadow-md'
+                                            : 'border-blue-100 bg-blue-50 text-slate-700 hover:border-blue-300 hover:bg-white'
+                                    }`}
+                                >
+                                    <span className="block text-xs font-black uppercase">{item.weekday}</span>
+                                    <span className="mt-1 block text-base font-black">{item.day}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </section>
 
                     <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -387,22 +499,36 @@ export default function BookAppointment() {
                     </section>
 
                     <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Bác sĩ</p>
-                        <h2 className="mt-1 text-xl font-black text-slate-900">Chọn bác sĩ phụ trách</h2>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Bác sĩ</p>
+                                <h2 className="mt-1 text-xl font-black text-slate-900">Bác sĩ phù hợp với ngày đã chọn</h2>
+                            </div>
+                            {loadingDentistAvailability && (
+                                <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">
+                                    Đang kiểm tra slot
+                                </span>
+                            )}
+                        </div>
 
                         <div className="mt-4 grid gap-3 md:grid-cols-2">
-                            {dentists.map((dentist) => {
+                            {sortedDentists.map((dentist) => {
                                 const selected = String(dentist.id) === String(dentistId);
                                 const avatar = getProfileImage(dentist);
+                                const availability = dentistAvailability[String(dentist.id)];
+                                const unavailable = Boolean(date && availability && availability.available === 0);
                                 return (
                                     <button
                                         key={dentist.id}
                                         type="button"
+                                        disabled={unavailable && !selected}
                                         onClick={() => setDentistId(String(dentist.id))}
                                         className={`flex items-center gap-4 rounded-2xl border p-4 text-left transition ${
                                             selected
                                                 ? 'border-blue-400 bg-blue-50 shadow-sm'
-                                                : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/60'
+                                                : unavailable
+                                                    ? 'cursor-not-allowed border-slate-100 bg-slate-50 opacity-70'
+                                                    : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/60'
                                         }`}
                                     >
                                         {avatar ? (
@@ -415,6 +541,19 @@ export default function BookAppointment() {
                                         <span className="min-w-0">
                                             <span className="block font-black text-slate-900">{dentist.fullName}</span>
                                             <span className="mt-1 block text-sm font-semibold text-slate-500">{dentist.specialty || 'Bác sĩ nha khoa'}</span>
+                                            {date && (
+                                                <span className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-black ${
+                                                    availability?.available > 0
+                                                        ? 'bg-emerald-50 text-emerald-700'
+                                                        : 'bg-rose-50 text-rose-600'
+                                                }`}>
+                                                    {availability
+                                                        ? availability.available > 0
+                                                            ? `${availability.available} slot trống${availability.firstTime ? ` · sớm nhất ${availability.firstTime}` : ''}`
+                                                            : 'Hết slot ngày này'
+                                                        : 'Đang kiểm tra'}
+                                                </span>
+                                            )}
                                         </span>
                                     </button>
                                 );
@@ -429,55 +568,51 @@ export default function BookAppointment() {
                     </section>
 
                     <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
-                        <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
-                            <label className="block">
-                                <span className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Ngày khám</span>
-                                <input
-                                    type="date"
-                                    className="mt-3 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
-                                    value={date}
-                                    onChange={(event) => setDate(event.target.value)}
-                                    min={today}
-                                    required
-                                />
-                            </label>
+                        <div>
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Khung giờ</p>
+                                    <h2 className="mt-1 text-xl font-black text-slate-900">Chọn suất khám còn trống</h2>
+                                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                                        {date && selectedDentist
+                                            ? `${selectedDentist.fullName} · ${formatDate(date)}`
+                                            : 'Chọn ngày và bác sĩ để xem giờ còn trống.'}
+                                    </p>
+                                </div>
+                                {loadingSlots && <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">Đang tải</span>}
+                            </div>
 
-                            <div>
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Khung giờ</p>
-                                        <h2 className="mt-1 text-xl font-black text-slate-900">Chọn giờ còn trống</h2>
+                            <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+                                {loadingSlots ? (
+                                    <div className="col-span-full rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-bold text-blue-700">
+                                        Đang kiểm tra lịch bác sĩ...
                                     </div>
-                                    {loadingSlots && <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">Đang tải</span>}
-                                </div>
-
-                                <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-6">
-                                    {loadingSlots ? (
-                                        <div className="col-span-full rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-bold text-blue-700">
-                                            Đang kiểm tra lịch bác sĩ...
-                                        </div>
-                                    ) : slots.length ? slots.map((slot) => (
-                                        <button
-                                            type="button"
-                                            key={slot.time}
-                                            disabled={!slot.available}
-                                            onClick={() => setTime(slot.time)}
-                                            className={`h-12 rounded-2xl border text-sm font-black transition ${
-                                                time === slot.time
-                                                    ? 'border-blue-700 bg-blue-700 text-white shadow-md'
-                                                    : slot.available
-                                                        ? 'border-blue-100 bg-blue-50 text-blue-700 hover:border-blue-400 hover:bg-white'
-                                                        : 'cursor-not-allowed border-slate-100 bg-slate-100 text-slate-400'
-                                            }`}
-                                        >
-                                            {slot.time}
-                                        </button>
-                                    )) : (
-                                        <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">
-                                            Chọn bác sĩ và ngày khám để xem khung giờ trống.
-                                        </div>
-                                    )}
-                                </div>
+                                ) : slots.length ? slots.map((slot) => (
+                                    <button
+                                        type="button"
+                                        key={slot.time}
+                                        disabled={!slot.available}
+                                        onClick={() => setTime(slot.time)}
+                                        title={slot.available ? `Chọn ${slot.time}` : 'Slot này không khả dụng'}
+                                        className={`h-12 rounded-2xl border text-sm font-black transition ${
+                                            time === slot.time
+                                                ? 'border-blue-700 bg-blue-700 text-white shadow-md'
+                                                : slot.available
+                                                    ? 'border-blue-100 bg-blue-50 text-blue-700 hover:border-blue-400 hover:bg-white'
+                                                    : 'cursor-not-allowed border-slate-100 bg-slate-100 text-slate-400'
+                                        }`}
+                                    >
+                                        {slot.time}
+                                    </button>
+                                )) : (
+                                    <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">
+                                        {!date
+                                            ? 'Chọn ngày khám trước để hệ thống gợi ý bác sĩ còn slot.'
+                                            : !dentistId
+                                                ? 'Chọn một bác sĩ còn slot để xem giờ khám.'
+                                                : 'Bác sĩ này không còn khung giờ phù hợp với dịch vụ/ngày đã chọn.'}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </section>

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
-const emptyForm = { id: null, fullName: '', email: '', password: '', phone: '', role: 'dentist', avatar: '' };
+const emptyForm = { id: null, fullName: '', email: '', password: '', phone: '', zaloUserId: '', role: 'dentist', avatar: '' };
 
 const roleLabels = {
     admin: 'Quản trị viên',
@@ -68,6 +68,7 @@ export default function UsersTab() {
             email: user.email || '',
             password: '',
             phone: user.phone || '',
+            zaloUserId: user.zaloUserId || '',
             role: user.role,
             avatar: user.avatar || ''
         });
@@ -106,6 +107,7 @@ export default function UsersTab() {
                 await api.put(`/users/${formData.id}`, {
                     fullName: formData.fullName,
                     phone: formData.phone,
+                    zaloUserId: formData.zaloUserId,
                     role: formData.role,
                     avatar: formData.avatar
                 });
@@ -153,7 +155,7 @@ export default function UsersTab() {
         return users.filter(user => {
             const matchRole = roleFilter === 'all' || user.role === roleFilter;
             const matchStatus = statusFilter === 'all' || user.status === statusFilter;
-            const source = `${user.fullName || ''} ${user.email || ''} ${user.phone || ''}`.toLowerCase();
+            const source = `${user.fullName || ''} ${user.email || ''} ${user.phone || ''} ${user.zaloUserId || ''}`.toLowerCase();
             const matchSearch = !keyword || source.includes(keyword);
             return matchRole && matchStatus && matchSearch;
         });
@@ -273,6 +275,7 @@ export default function UsersTab() {
                                 <Field label="Email đăng nhập" type="email" required disabled={isEditing} value={formData.email} onChange={value => setFormData({ ...formData, email: value })} />
                                 {!isEditing && <Field label="Mật khẩu" required value={formData.password} onChange={value => setFormData({ ...formData, password: value })} />}
                                 <Field label="Số điện thoại" value={formData.phone} onChange={value => setFormData({ ...formData, phone: value })} />
+                                {isEditing && <Field label="Zalo user ID" value={formData.zaloUserId} onChange={value => setFormData({ ...formData, zaloUserId: value })} />}
                                 <Select label="Vai trò" value={formData.role} onChange={value => setFormData({ ...formData, role: value })}>
                                     {isEditing && <option value="patient">Khách hàng</option>}
                                     <option value="dentist">Bác sĩ</option>
@@ -331,6 +334,7 @@ export default function UsersTab() {
                                     <td className="px-6 py-4">
                                         <div className="text-sm font-bold text-slate-800">{item.email}</div>
                                         <div className="text-xs text-slate-500">{item.phone || 'Chưa cập nhật số điện thoại'}</div>
+                                        {item.zaloUserId && <div className="mt-1 text-xs font-black text-blue-700">Zalo: {item.zaloUserId}</div>}
                                     </td>
                                     <td className="px-6 py-4">
                                         {item.status === 'active'

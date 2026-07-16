@@ -16,11 +16,74 @@ const statusMeta = {
     rejected: ['Từ chối', 'bg-rose-50 text-rose-700']
 };
 
+const defaultSchedule = (dayOfWeek) => ({
+    dayOfWeek,
+    startTime: '',
+    endTime: '',
+    breakStart: '',
+    breakEnd: '',
+    slotIntervalMinutes: 30,
+    isActive: false
+});
+
+const normalizeSchedule = (rows) => {
+    const byDay = new Map((rows || []).map((row) => [Number(row.dayOfWeek), row]));
+    return dayLabels.map((_, dayOfWeek) => {
+        const row = byDay.get(dayOfWeek);
+        if (!row) return defaultSchedule(dayOfWeek);
+
+        return {
+            dayOfWeek,
+            startTime: String(row.startTime || '').slice(0, 5),
+            endTime: String(row.endTime || '').slice(0, 5),
+            breakStart: row.breakStart ? String(row.breakStart).slice(0, 5) : '',
+            breakEnd: row.breakEnd ? String(row.breakEnd).slice(0, 5) : '',
+            slotIntervalMinutes: Number(row.slotIntervalMinutes || 30),
+            isActive: Number(row.isActive) === 1
+        };
+    });
+};
+
 const formatDate = (value) => new Date(value).toLocaleDateString('vi-VN');
+
+const timeToMinutes = (value) => {
+    if (!/^\d{2}:\d{2}$/.test(String(value || ''))) return NaN;
+    const [hour, minute] = String(value).split(':').map(Number);
+    return hour * 60 + minute;
+};
+
+const minutesToTime = (minutes) => {
+    const hour = Math.floor(minutes / 60);
+    const minute = minutes % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
+const rangesOverlap = (startA, endA, startB, endB) => startA < endB && startB < endA;
+
+const getSlotPreview = (schedule) => {
+    if (!schedule.isActive) return [];
+
+    const start = timeToMinutes(schedule.startTime);
+    const end = timeToMinutes(schedule.endTime);
+    const interval = Number(schedule.slotIntervalMinutes || 30);
+    const hasBreak = schedule.breakStart && schedule.breakEnd;
+    const breakStart = hasBreak ? timeToMinutes(schedule.breakStart) : null;
+    const breakEnd = hasBreak ? timeToMinutes(schedule.breakEnd) : null;
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end || interval < 15) return [];
+
+    const slots = [];
+    for (let minutes = start; minutes + interval <= end; minutes += interval) {
+        const slotEnd = minutes + interval;
+        if (hasBreak && rangesOverlap(minutes, slotEnd, breakStart, breakEnd)) continue;
+        slots.push(minutesToTime(minutes));
+    }
+    return slots;
+};
 
 export default function DentistDayOffTab() {
     const { user } = useContext(AuthContext);
-    const [schedule, setSchedule] = useState([]);
+    const [schedule, setSchedule] = useState(dayLabels.map((_, index) => defaultSchedule(index)));
     const [daysOff, setDaysOff] = useState([]);
     const [requests, setRequests] = useState([]);
     const [form, setForm] = useState({ offDate: '', reason: '' });
@@ -29,6 +92,17 @@ export default function DentistDayOffTab() {
     const userId = user?.id;
 
     const pendingCount = useMemo(() => requests.filter((request) => request.status === 'pending').length, [requests]);
+    const activeSchedules = useMemo(() => schedule.filter((item) => item.isActive), [schedule]);
+    const weeklySlotCount = useMemo(
+        () => schedule.reduce((sum, item) => sum + getSlotPreview(item).length, 0),
+        [schedule]
+    );
+    const nextApprovedDaysOff = useMemo(
+        () => daysOff
+            .filter((item) => String(item.offDate).slice(0, 10) >= todayValue())
+            .slice(0, 3),
+        [daysOff]
+    );
 
     const fetchData = useCallback(async () => {
         if (!userId) return;
@@ -40,11 +114,11 @@ export default function DentistDayOffTab() {
                 api.get('/schedules/days-off'),
                 api.get('/schedules/day-off-requests')
             ]);
-            setSchedule(scheduleRes.data.data || []);
+            setSchedule(normalizeSchedule(scheduleRes.data.data || []));
             setDaysOff(daysOffRes.data.data || []);
             setRequests(requestsRes.data.data || []);
         } catch {
-            toast.error('Không thể tải lịch nghỉ.');
+            toast.error('Không thể tải lịch làm việc.');
         } finally {
             setLoading(false);
         }
@@ -70,56 +144,69 @@ export default function DentistDayOffTab() {
     };
 
     if (loading) {
-        return <Panel><div className="p-10 text-center font-bold text-slate-500">Đang tải lịch nghỉ...</div></Panel>;
+        return <Panel><div className="p-10 text-center font-bold text-slate-500">Đang tải lịch làm việc...</div></Panel>;
     }
 
     return (
         <div className="space-y-6">
             <Panel>
                 <div className="border-b border-blue-100 bg-white px-6 py-5">
-                    <p className="text-sm font-black uppercase text-blue-700">Đăng ký nghỉ</p>
-                    <h2 className="mt-1 text-2xl font-black text-blue-950">Yêu cầu ngày nghỉ của tôi</h2>
-                    <p className="mt-2 text-sm text-slate-500">Gửi yêu cầu nghỉ để admin/lễ tân duyệt trước khi hệ thống khóa lịch đặt khám.</p>
+                    <p className="text-sm font-black uppercase text-blue-700">Lịch làm việc cá nhân</p>
+                    <div className="mt-1 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <div>
+                            <h2 className="text-2xl font-black text-blue-950">Ca làm và ngày nghỉ của tôi</h2>
+                            <p className="mt-2 text-sm text-slate-500">Bác sĩ chỉ xem lịch đã được admin/lễ tân cấu hình và gửi yêu cầu nghỉ khi cần.</p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                            <Summary label="Ngày làm" value={activeSchedules.length} />
+                            <Summary label="Slot/tuần" value={weeklySlotCount} />
+                            <Summary label="Chờ duyệt" value={pendingCount} />
+                        </div>
+                    </div>
                 </div>
 
                 <div className="grid gap-6 p-6 lg:grid-cols-[1fr_360px]">
                     <section>
-                        <h3 className="font-black text-blue-950">Lịch làm việc cố định</h3>
-                        <div className="mt-4 grid gap-3 md:grid-cols-2">
-                            {schedule.map((item) => (
-                                <article key={item.dayOfWeek} className={`rounded-2xl border p-4 ${Number(item.isActive) === 1 ? 'border-blue-100 bg-white' : 'border-slate-100 bg-slate-50'}`}>
-                                    <div className="flex items-center justify-between gap-3">
-                                        <p className="font-black text-blue-950">{dayLabels[item.dayOfWeek]}</p>
-                                        <span className={`rounded-full px-3 py-1 text-xs font-black ${Number(item.isActive) === 1 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                            {Number(item.isActive) === 1 ? 'Làm việc' : 'Nghỉ'}
-                                        </span>
-                                    </div>
-                                    {Number(item.isActive) === 1 && (
-                                        <p className="mt-3 text-sm font-bold text-slate-600">
-                                            {String(item.startTime).slice(0, 5)} - {String(item.endTime).slice(0, 5)}
-                                            {item.breakStart && item.breakEnd ? ` · Nghỉ ${String(item.breakStart).slice(0, 5)}-${String(item.breakEnd).slice(0, 5)}` : ''}
-                                        </p>
-                                    )}
-                                </article>
-                            ))}
+                        <div className="flex items-center justify-between gap-3">
+                            <h3 className="font-black text-blue-950">Lịch tuần</h3>
+                            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">Chỉ xem</span>
+                        </div>
+                        <div className="mt-4 grid gap-3">
+                            {schedule.map((item) => <ScheduleRow key={item.dayOfWeek} item={item} />)}
                         </div>
                     </section>
 
-                    <aside className="rounded-2xl border border-blue-100 bg-[#F8FCFC] p-5">
-                        <p className="text-sm font-black uppercase text-blue-700">Tạo yêu cầu</p>
-                        <form onSubmit={submitRequest} className="mt-4 space-y-4">
-                            <label className="block text-sm font-bold text-slate-700">
-                                Ngày muốn nghỉ
-                                <input type="date" min={todayValue()} value={form.offDate} onChange={(event) => setForm({ ...form, offDate: event.target.value })} required className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500" />
-                            </label>
-                            <label className="block text-sm font-bold text-slate-700">
-                                Lý do
-                                <textarea rows="4" value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="Ví dụ: nghỉ cá nhân, công tác, đào tạo..." className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500" />
-                            </label>
-                            <button disabled={submitting} className="w-full rounded-xl bg-blue-700 px-5 py-3 text-sm font-black text-white hover:bg-blue-800 disabled:bg-slate-300">
-                                {submitting ? 'Đang gửi...' : 'Gửi yêu cầu nghỉ'}
-                            </button>
-                        </form>
+                    <aside className="space-y-4">
+                        <div className="rounded-2xl border border-blue-100 bg-[#F8FCFC] p-5">
+                            <p className="text-sm font-black uppercase text-blue-700">Ngày nghỉ sắp tới</p>
+                            <div className="mt-4 grid gap-2">
+                                {nextApprovedDaysOff.length === 0 ? (
+                                    <p className="rounded-xl bg-white p-3 text-sm font-bold text-slate-500">Chưa có ngày nghỉ đã duyệt.</p>
+                                ) : nextApprovedDaysOff.map((item) => (
+                                    <article key={item.id} className="rounded-xl bg-white p-3">
+                                        <p className="font-black text-blue-950">{formatDate(item.offDate)}</p>
+                                        <p className="mt-1 text-sm text-slate-500">{item.reason || 'Nghỉ'}</p>
+                                    </article>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-blue-100 bg-[#F8FCFC] p-5">
+                            <p className="text-sm font-black uppercase text-blue-700">Tạo yêu cầu nghỉ</p>
+                            <form onSubmit={submitRequest} className="mt-4 space-y-4">
+                                <label className="block text-sm font-bold text-slate-700">
+                                    Ngày muốn nghỉ
+                                    <input type="date" min={todayValue()} value={form.offDate} onChange={(event) => setForm({ ...form, offDate: event.target.value })} required className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500" />
+                                </label>
+                                <label className="block text-sm font-bold text-slate-700">
+                                    Lý do
+                                    <textarea rows="4" value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="Ví dụ: nghỉ cá nhân, công tác, đào tạo..." className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500" />
+                                </label>
+                                <button disabled={submitting} className="w-full rounded-xl bg-blue-700 px-5 py-3 text-sm font-black text-white hover:bg-blue-800 disabled:bg-slate-300">
+                                    {submitting ? 'Đang gửi...' : 'Gửi yêu cầu nghỉ'}
+                                </button>
+                            </form>
+                        </div>
                     </aside>
                 </div>
             </Panel>
@@ -135,8 +222,8 @@ export default function DentistDayOffTab() {
 
                 <Panel>
                     <div className="border-b border-blue-100 px-6 py-5">
-                        <h3 className="font-black text-blue-950">Ngày nghỉ đã duyệt</h3>
-                        <p className="mt-1 text-sm text-slate-500">Những ngày này sẽ không hiển thị slot đặt lịch.</p>
+                        <h3 className="font-black text-blue-950">Tất cả ngày nghỉ đã duyệt</h3>
+                        <p className="mt-1 text-sm text-slate-500">Những ngày này sẽ không hiển thị slot đặt lịch cho khách.</p>
                     </div>
                     <div className="grid gap-2 p-6">
                         {daysOff.length === 0 ? (
@@ -151,6 +238,46 @@ export default function DentistDayOffTab() {
                 </Panel>
             </div>
         </div>
+    );
+}
+
+function ScheduleRow({ item }) {
+    const slots = getSlotPreview(item);
+
+    return (
+        <article className={`rounded-2xl border p-4 ${item.isActive ? 'border-blue-100 bg-white' : 'border-slate-100 bg-slate-50'}`}>
+            <div className="grid gap-4 xl:grid-cols-[150px_1fr_120px] xl:items-center">
+                <div className="flex items-center justify-between gap-3 xl:block">
+                    <p className="font-black text-blue-950">{dayLabels[item.dayOfWeek]}</p>
+                    <span className={`mt-0 inline-flex rounded-full px-3 py-1 text-xs font-black xl:mt-2 ${item.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {item.isActive ? 'Làm việc' : 'Nghỉ'}
+                    </span>
+                </div>
+
+                {item.isActive ? (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <InfoPill label="Ca làm" value={`${item.startTime} - ${item.endTime}`} />
+                        <InfoPill label="Nghỉ giữa ca" value={item.breakStart && item.breakEnd ? `${item.breakStart} - ${item.breakEnd}` : 'Không có'} />
+                        <InfoPill label="Khoảng slot" value={`${item.slotIntervalMinutes} phút`} />
+                    </div>
+                ) : (
+                    <div className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-500">Không nhận lịch trong ngày này.</div>
+                )}
+
+                <div className="rounded-xl bg-blue-50 px-4 py-3 text-center text-sm font-black text-blue-800">
+                    {item.isActive ? `${slots.length} slot` : '0 slot'}
+                </div>
+            </div>
+
+            {item.isActive && slots.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                    {slots.slice(0, 10).map((slot) => (
+                        <span key={slot} className="rounded-full bg-[#F8FCFC] px-3 py-1 text-xs font-black text-slate-600">{slot}</span>
+                    ))}
+                    {slots.length > 10 && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">+{slots.length - 10}</span>}
+                </div>
+            )}
+        </article>
     );
 }
 
@@ -174,6 +301,24 @@ function RequestList({ requests }) {
                     </article>
                 );
             })}
+        </div>
+    );
+}
+
+function InfoPill({ label, value }) {
+    return (
+        <div className="rounded-xl bg-[#F8FCFC] px-4 py-3">
+            <p className="text-xs font-black uppercase text-slate-400">{label}</p>
+            <p className="mt-1 text-sm font-black text-slate-700">{value}</p>
+        </div>
+    );
+}
+
+function Summary({ label, value }) {
+    return (
+        <div className="rounded-xl bg-blue-50 px-4 py-3">
+            <p className="text-xl font-black text-blue-800">{value}</p>
+            <p className="text-xs font-black uppercase text-slate-400">{label}</p>
         </div>
     );
 }

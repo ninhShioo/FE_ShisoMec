@@ -506,15 +506,15 @@ export default function Profile() {
                             <SectionTitle title="Hóa đơn" description="Theo dõi chi phí khám và thanh toán bằng VNPay/QR khi còn công nợ." />
                             {invoices.length === 0 ? <Empty text="Bạn chưa có hóa đơn nào." /> : (
                                 <div className="overflow-x-auto">
-                                    <table className="min-w-[880px] divide-y divide-blue-100">
+                                    <table className="w-full min-w-[1040px] divide-y divide-blue-100">
                                         <thead>
                                             <tr className="bg-blue-50/60 text-left text-xs font-black uppercase text-slate-500">
-                                                <th className="w-[110px] px-4 py-3">Mã</th>
-                                                <th className="w-[130px] px-4 py-3">Ngày tạo</th>
-                                                <th className="w-[150px] px-4 py-3">Thanh toán</th>
-                                                <th className="w-[210px] px-4 py-3">Tổng tiền</th>
-                                                <th className="w-[140px] px-4 py-3">Trạng thái</th>
-                                                <th className="w-[180px] px-4 py-3 text-right">Thao tác</th>
+                                                <th className="w-[120px] px-4 py-3">Mã</th>
+                                                <th className="w-[140px] px-4 py-3">Ngày tạo</th>
+                                                <th className="w-[170px] px-4 py-3">Thanh toán</th>
+                                                <th className="w-[250px] px-4 py-3">Tổng tiền</th>
+                                                <th className="w-[170px] px-4 py-3 text-center">Trạng thái</th>
+                                                <th className="w-[230px] px-4 py-3 text-center">Thao tác</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-blue-50">
@@ -524,10 +524,10 @@ export default function Profile() {
                                                     id={`profile-invoice-row-${invoice.id}`}
                                                     className={`hover:bg-blue-50/40 ${getHighlightClass(highlight.type === 'invoice' && highlight.id === String(invoice.id))}`}
                                                 >
-                                                    <td className="px-4 py-4 font-black text-blue-950">INV-{invoice.id}</td>
-                                                    <td className="px-4 py-4 text-sm text-slate-600">{new Date(invoice.createdAt).toLocaleDateString('vi-VN')}</td>
-                                                    <td className="px-4 py-4 text-sm text-slate-600">{paymentLabels[invoice.lastPaymentMethod || invoice.paymentMethod] || invoice.paymentMethod || '-'}</td>
-                                                    <td className="px-4 py-4 align-top">
+                                                    <td className="px-4 py-4 align-middle font-black text-blue-950">INV-{invoice.id}</td>
+                                                    <td className="px-4 py-4 align-middle text-sm text-slate-600">{new Date(invoice.createdAt).toLocaleDateString('vi-VN')}</td>
+                                                    <td className="px-4 py-4 align-middle text-sm text-slate-600">{paymentLabels[invoice.lastPaymentMethod || invoice.paymentMethod] || invoice.paymentMethod || '-'}</td>
+                                                    <td className="px-4 py-4 align-middle">
                                                         <p className="font-black text-blue-700"><MoneyText value={invoice.totalAmount} /></p>
                                                         {Number(invoice.paidAmount || 0) > 0 && (
                                                             <p className="mt-1 text-xs font-bold text-emerald-700">Đã thu <MoneyText value={invoice.paidAmount} /></p>
@@ -536,18 +536,18 @@ export default function Profile() {
                                                             <p className="mt-1 text-xs font-bold text-rose-600">Còn <MoneyText value={invoice.outstandingAmount} /></p>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-4">
+                                                    <td className="px-4 py-4 text-center align-middle">
                                                         <span className={`inline-flex min-w-[112px] justify-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ${getInvoiceStatusMeta(invoice.status)[1]}`}>
                                                             {getInvoiceStatusMeta(invoice.status)[0]}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-4 text-right">
+                                                    <td className="px-4 py-4 text-center align-middle">
                                                         {['unpaid', 'partial'].includes(invoice.status) ? (
-                                                            <button onClick={() => handleVnpayPayment(invoice)} className="whitespace-nowrap rounded-xl bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
+                                                            <button onClick={() => handleVnpayPayment(invoice)} className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-xl bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
                                                                 Thanh toán VNPay/QR
                                                             </button>
                                                         ) : (
-                                                            <span className="whitespace-nowrap text-xs font-bold text-slate-400">Đã hoàn tất</span>
+                                                            <span className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-xl px-4 text-xs font-bold text-slate-400">Đã hoàn tất</span>
                                                         )}
                                                     </td>
                                                 </tr>

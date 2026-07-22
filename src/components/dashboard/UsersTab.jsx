@@ -18,6 +18,15 @@ const roleBadges = {
     patient: 'bg-rose-50 text-rose-700'
 };
 
+const passwordRules = [
+    ['length', 'Ít nhất 8 ký tự', value => value.length >= 8],
+    ['upper', 'Có chữ hoa', value => /[A-Z]/.test(value)],
+    ['lower', 'Có chữ thường', value => /[a-z]/.test(value)],
+    ['number', 'Có số', value => /\d/.test(value)]
+];
+
+const isStrongPassword = (password) => passwordRules.every(([, , test]) => test(String(password || '')));
+
 export default function UsersTab() {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -101,6 +110,11 @@ export default function UsersTab() {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
+
+        if (!isEditing && !isStrongPassword(formData.password)) {
+            toast.error('Mật khẩu cần ít nhất 8 ký tự, có chữ hoa, chữ thường và số.');
+            return;
+        }
 
         try {
             if (isEditing) {
@@ -273,7 +287,24 @@ export default function UsersTab() {
                             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                 <Field label="Họ tên" required value={formData.fullName} onChange={value => setFormData({ ...formData, fullName: value })} />
                                 <Field label="Email đăng nhập" type="email" required disabled={isEditing} value={formData.email} onChange={value => setFormData({ ...formData, email: value })} />
-                                {!isEditing && <Field label="Mật khẩu" required value={formData.password} onChange={value => setFormData({ ...formData, password: value })} />}
+                                {!isEditing && (
+                                    <div>
+                                        <Field label="Mật khẩu" required value={formData.password} onChange={value => setFormData({ ...formData, password: value })} type="password" minLength={8} autoComplete="new-password" />
+                                        <div className="mt-2 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs font-bold text-slate-600">
+                                            <p className="mb-1 font-black text-slate-700">Yêu cầu mật khẩu</p>
+                                            <div className="grid gap-1">
+                                                {passwordRules.map(([key, label, test]) => {
+                                                    const passed = test(formData.password);
+                                                    return (
+                                                        <span key={key} className={passed ? 'text-emerald-700' : 'text-slate-500'}>
+                                                            {passed ? '✓' : '•'} {label}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 <Field label="Số điện thoại" value={formData.phone} onChange={value => setFormData({ ...formData, phone: value })} />
                                 {isEditing && <Field label="Zalo user ID" value={formData.zaloUserId} onChange={value => setFormData({ ...formData, zaloUserId: value })} />}
                                 <Select label="Vai trò" value={formData.role} onChange={value => setFormData({ ...formData, role: value })}>

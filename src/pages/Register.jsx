@@ -11,19 +11,37 @@ const getAuthErrorMessage = (err, fallback) => {
     return fallback;
 };
 
+const passwordRules = [
+    ['length', 'Ít nhất 8 ký tự', value => value.length >= 8],
+    ['upper', 'Có chữ hoa', value => /[A-Z]/.test(value)],
+    ['lower', 'Có chữ thường', value => /[a-z]/.test(value)],
+    ['number', 'Có số', value => /\d/.test(value)]
+];
+
+const isStrongPassword = (password) => passwordRules.every(([, , test]) => test(password));
+
 export default function Register() {
     const [formData, setFormData] = useState({ fullName: '', email: '', password: '', phone: '' });
     const [error, setError] = useState('');
     const { register, googleLogin } = useContext(AuthContext);
     const navigate = useNavigate();
+    const password = formData.password;
+    const passwordTouched = password.length > 0;
+    const passwordValid = isStrongPassword(password);
 
     const handleChange = (name, value) => {
         setFormData({ ...formData, [name]: value });
+        if (error) setError('');
     };
 
     const handleSubmit = async (event) => {
         event.preventDefault();
         setError('');
+
+        if (!isStrongPassword(formData.password)) {
+            setError('Mật khẩu cần ít nhất 8 ký tự, có chữ hoa, chữ thường và số.');
+            return;
+        }
 
         try {
             await register(formData);
@@ -61,9 +79,23 @@ export default function Register() {
                     <Field label="Họ và tên" name="fullName" placeholder="Nguyễn Văn A" value={formData.fullName} onChange={handleChange} required />
                     <Field label="Số điện thoại" name="phone" placeholder="0987654321" value={formData.phone} onChange={handleChange} />
                     <Field label="Email" name="email" type="email" placeholder="email@example.com" value={formData.email} onChange={handleChange} required />
-                    <Field label="Mật khẩu" name="password" type="password" placeholder="Tạo mật khẩu" value={formData.password} onChange={handleChange} required />
+                    <Field label="Mật khẩu" name="password" type="password" placeholder="Ví dụ: NhaKhoa2026" value={formData.password} onChange={handleChange} required minLength={8} autoComplete="new-password" />
 
-                    <button type="submit" className="w-full rounded-full bg-[#4A6FA5] px-5 py-3.5 font-black text-white shadow-lg shadow-blue-100 hover:bg-blue-800">
+                    <div className={`rounded-2xl border p-4 text-xs font-bold ${passwordTouched && !passwordValid ? 'border-amber-100 bg-amber-50 text-amber-700' : 'border-blue-100 bg-blue-50 text-slate-600'}`}>
+                        <p className="mb-2 text-sm font-black text-slate-700">Yêu cầu mật khẩu</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            {passwordRules.map(([key, label, test]) => {
+                                const passed = test(password);
+                                return (
+                                    <span key={key} className={passed ? 'text-emerald-700' : 'text-slate-500'}>
+                                        {passed ? '✓' : '•'} {label}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <button type="submit" disabled={passwordTouched && !passwordValid} className="w-full rounded-full bg-[#4A6FA5] px-5 py-3.5 font-black text-white shadow-lg shadow-blue-100 hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none">
                         Tạo tài khoản
                     </button>
                 </form>

@@ -36,6 +36,32 @@ const formatDateTime = (value) => value
     ? new Date(value).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })
     : '';
 
+const emptyFeedbackSummary = {
+    total: 0,
+    helpful: 0,
+    unhelpful: 0,
+    recentUnhelpful: [],
+    quality: {
+        days: 30,
+        observedResponses: 0,
+        totalResponses: 0,
+        legacyResponses: 0,
+        telemetryCoverage: 0,
+        totalFeedback: 0,
+        helpfulRate: 0,
+        groundedRate: 0,
+        reviewRecommended: 0,
+        reviewRate: 0,
+        averageConfidence: 0,
+        averageGroundingConfidence: 0,
+        byIntent: [],
+        byAiMode: [],
+        daily: []
+    }
+};
+
+const formatPercent = (value) => `${Math.round(Number(value || 0) * 100)}%`;
+
 export default function AiKnowledgeTab() {
     const formRef = useRef(null);
     const titleInputRef = useRef(null);
@@ -47,7 +73,10 @@ export default function AiKnowledgeTab() {
     const [filters, setFilters] = useState({ q: '', status: 'all' });
     const [trainingSamples, setTrainingSamples] = useState([]);
     const [trainingLoading, setTrainingLoading] = useState(true);
-    const [feedbackSummary, setFeedbackSummary] = useState({ total: 0, helpful: 0, unhelpful: 0, recentUnhelpful: [] });
+    const [feedbackSummary, setFeedbackSummary] = useState(emptyFeedbackSummary);
+    const [qaResult, setQaResult] = useState(null);
+    const [qaLoading, setQaLoading] = useState(false);
+    const [previewQuestion, setPreviewQuestion] = useState('');
 
     const activeCount = useMemo(() => items.filter((item) => Number(item.isActive) === 1).length, [items]);
     const inactiveCount = items.length - activeCount;
@@ -86,7 +115,7 @@ export default function AiKnowledgeTab() {
     const fetchFeedbackSummary = async () => {
         try {
             const res = await api.get('/ai-knowledge/feedback-summary');
-            setFeedbackSummary(res.data.data || { total: 0, helpful: 0, unhelpful: 0, recentUnhelpful: [] });
+            setFeedbackSummary(res.data.data || emptyFeedbackSummary);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Không thể tải thống kê phản hồi AI.');
         }
@@ -94,6 +123,8 @@ export default function AiKnowledgeTab() {
 
     useEffect(() => {
         fetchItems();
+        // Search text is submitted explicitly; only status changes reload automatically.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filters.status]);
 
     useEffect(() => {
@@ -110,6 +141,8 @@ export default function AiKnowledgeTab() {
 
     const openCreateForm = () => {
         setFormData(emptyKnowledge);
+        setQaResult(null);
+        setPreviewQuestion('');
         setIsEditing(false);
         setShowForm(true);
         revealForm();
@@ -125,6 +158,8 @@ export default function AiKnowledgeTab() {
             answer: item.answer || '',
             isActive: Number(item.isActive) === 1
         });
+        setQaResult(null);
+        setPreviewQuestion('');
         setIsEditing(true);
         setShowForm(true);
         revealForm();
@@ -140,6 +175,8 @@ export default function AiKnowledgeTab() {
             answer: sample.assistantReply || '',
             isActive: true
         });
+        setQaResult(null);
+        setPreviewQuestion(sample.userMessage || '');
         setIsEditing(false);
         setShowForm(true);
         revealForm();
@@ -149,12 +186,49 @@ export default function AiKnowledgeTab() {
         setShowForm(false);
         setIsEditing(false);
         setFormData(emptyKnowledge);
+        setQaResult(null);
+        setPreviewQuestion('');
+    };
+
+    const updateFormData = (changes) => {
+        setFormData((current) => ({ ...current, ...changes }));
+        setQaResult(null);
+    };
+
+    const runKnowledgeCheck = async (candidate = formData, showSuccess = true) => {
+        try {
+            setQaLoading(true);
+            const res = await api.post('/ai-knowledge/validate', {
+                ...candidate,
+                testQuestions: previewQuestion.trim() ? [previewQuestion.trim()] : []
+            });
+            const result = res.data.data;
+            setQaResult(result);
+            if (showSuccess) {
+                if (result.ready) toast.success('Tri thức đạt kiểm tra chất lượng.');
+                else toast.error('Tri thức còn lỗi cần sửa trước khi lưu.');
+            }
+            return result;
+        } catch (error) {
+            const result = error.response?.data?.data?.qa;
+            if (result) setQaResult(result);
+            toast.error(error.response?.data?.message || 'Không thể kiểm tra tri thức AI.');
+            return null;
+        } finally {
+            setQaLoading(false);
+        }
     };
 
     const handleSubmit = async (event) => {
         event.preventDefault();
 
         try {
+            const qa = await runKnowledgeCheck(formData, false);
+            if (!qa?.ready) {
+                toast.error('Hãy sửa các lỗi QA trước khi lưu tri thức.');
+                return;
+            }
+
             if (isEditing) {
                 await api.put(`/ai-knowledge/${formData.id}`, formData);
                 toast.success('Đã cập nhật tri thức AI.');
@@ -194,21 +268,8 @@ export default function AiKnowledgeTab() {
     };
 
     const handlePromoteSample = async (sample) => {
-        try {
-            await api.post(`/ai-knowledge/training-samples/${sample.id}/promote`, {
-                title: String(sample.userMessage || '').slice(0, 140),
-                category: categoryForIntent(sample.intent),
-                keywords: sample.userMessage || '',
-                answer: sample.assistantReply || 'Cần bổ sung câu trả lời phù hợp.',
-                isActive: true
-            });
-            toast.success('Đã lưu mẫu training vào AI Knowledge.');
-            fetchItems();
-            fetchTrainingSamples();
-            fetchFeedbackSummary();
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Không thể lưu mẫu training.');
-        }
+        openTrainingSampleForm(sample);
+        toast('Kiểm tra và chỉnh câu trả lời trước khi đưa vào AI Knowledge.');
     };
 
     const handleIgnoreSample = async (sample) => {
@@ -246,6 +307,52 @@ export default function AiKnowledgeTab() {
                     <SummaryCard label="Đã tắt" value={inactiveCount} tone="rose" />
                     <SummaryCard label="AI hữu ích" value={feedbackSummary.helpful} tone="teal" />
                     <SummaryCard label="AI chưa ổn" value={feedbackSummary.unhelpful} tone="amber" />
+                </div>
+
+                <div className="border-t border-blue-100 bg-slate-50/70 px-6 py-5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                            <p className="text-sm font-black uppercase text-blue-700">Chất lượng AI</p>
+                            <h3 className="mt-1 text-lg font-black text-blue-950">Theo dõi trong {feedbackSummary.quality?.days || 30} ngày</h3>
+                        </div>
+                        <p className="text-sm font-bold text-slate-500">
+                            {feedbackSummary.quality?.totalResponses || 0}/{feedbackSummary.quality?.observedResponses || 0} câu trả lời có telemetry
+                        </p>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <QualityMetric label="Tỷ lệ hữu ích" value={formatPercent(feedbackSummary.quality?.helpfulRate)} detail={`${feedbackSummary.quality?.totalFeedback || 0} lượt đánh giá`} />
+                        <QualityMetric label="Có nguồn dữ liệu" value={formatPercent(feedbackSummary.quality?.groundedRate)} detail="Grounding từ DB hoặc kho tri thức" />
+                        <QualityMetric label="Tin cậy intent" value={formatPercent(feedbackSummary.quality?.averageConfidence)} detail="Điểm nhận diện ý định trung bình" />
+                        <QualityMetric label="Cần admin review" value={feedbackSummary.quality?.reviewRecommended || 0} detail={`${formatPercent(feedbackSummary.quality?.reviewRate)} tổng câu trả lời`} tone="rose" />
+                    </div>
+
+                    {feedbackSummary.quality?.byIntent?.length > 0 && (
+                        <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                            <table className="w-full min-w-[640px] text-left text-sm">
+                                <thead className="bg-slate-50 text-xs font-black uppercase text-slate-500">
+                                    <tr>
+                                        <th className="px-4 py-3">Intent</th>
+                                        <th className="px-4 py-3 text-center">Câu trả lời</th>
+                                        <th className="px-4 py-3 text-center">Có nguồn</th>
+                                        <th className="px-4 py-3 text-center">Tin cậy</th>
+                                        <th className="px-4 py-3 text-center">Cần review</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {feedbackSummary.quality.byIntent.slice(0, 6).map((row) => (
+                                        <tr key={row.intent}>
+                                            <td className="px-4 py-3 font-black text-blue-950">{row.intent}</td>
+                                            <td className="px-4 py-3 text-center font-bold text-slate-600">{row.responses}</td>
+                                            <td className="px-4 py-3 text-center font-bold text-teal-700">{formatPercent(row.groundedRate)}</td>
+                                            <td className="px-4 py-3 text-center font-bold text-blue-700">{formatPercent(row.averageConfidence)}</td>
+                                            <td className="px-4 py-3 text-center font-bold text-rose-600">{row.reviewRecommended}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
 
                 <form onSubmit={handleSearch} className="grid gap-3 border-t border-blue-100 px-6 py-5 lg:grid-cols-[1fr_220px_auto]">
@@ -292,6 +399,7 @@ export default function AiKnowledgeTab() {
                                 <div key={item.id} className="rounded-xl border border-amber-100 bg-white px-4 py-3">
                                     <p className="text-xs font-bold text-slate-400">{item.userName} • {formatDateTime(item.createdAt)}</p>
                                     <p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-slate-700">{item.assistantReply}</p>
+                                    {item.comment && <p className="mt-2 text-xs font-black text-rose-600">Lý do: {item.comment}</p>}
                                 </div>
                             ))}
                         </div>
@@ -328,7 +436,7 @@ export default function AiKnowledgeTab() {
                                 </div>
                                 <div className="flex flex-wrap items-start justify-end gap-2">
                                     <button type="button" onClick={() => handlePromoteSample(sample)} className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-black text-white hover:bg-teal-700">
-                                        Lưu nhanh
+                                        Kiểm tra
                                     </button>
                                     <button type="button" onClick={() => openTrainingSampleForm(sample)} className="rounded-xl border border-blue-100 px-4 py-2 text-sm font-black text-blue-700 hover:bg-blue-50">
                                         Sửa trước
@@ -358,15 +466,15 @@ export default function AiKnowledgeTab() {
                             </div>
 
                             <div className="grid gap-4 lg:grid-cols-3">
-                                <Field inputRef={titleInputRef} label="Tiêu đề" value={formData.title} onChange={(value) => setFormData({ ...formData, title: value })} required />
-                                <Select label="Nhóm kiến thức" value={formData.category} onChange={(value) => setFormData({ ...formData, category: value })}>
+                                <Field inputRef={titleInputRef} label="Tiêu đề" value={formData.title} onChange={(value) => updateFormData({ title: value })} required />
+                                <Select label="Nhóm kiến thức" value={formData.category} onChange={(value) => updateFormData({ category: value })}>
                                     {categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                                 </Select>
                                 <label className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm font-black text-blue-950">
                                     <input
                                         type="checkbox"
                                         checked={formData.isActive}
-                                        onChange={(event) => setFormData({ ...formData, isActive: event.target.checked })}
+                                        onChange={(event) => updateFormData({ isActive: event.target.checked })}
                                         className="h-5 w-5 rounded border-blue-200 text-blue-700 focus:ring-blue-200"
                                     />
                                     Cho chatbot sử dụng
@@ -376,7 +484,7 @@ export default function AiKnowledgeTab() {
                                         label="Từ khóa, cách hỏi thường gặp"
                                         rows={3}
                                         value={formData.keywords}
-                                        onChange={(value) => setFormData({ ...formData, keywords: value })}
+                                        onChange={(value) => updateFormData({ keywords: value })}
                                         placeholder="Ví dụ: đau răng, nhức răng, ê buốt, sâu răng"
                                         required
                                     />
@@ -386,11 +494,35 @@ export default function AiKnowledgeTab() {
                                         label="Câu trả lời mẫu"
                                         rows={6}
                                         value={formData.answer}
-                                        onChange={(value) => setFormData({ ...formData, answer: value })}
+                                        onChange={(value) => updateFormData({ answer: value })}
                                         placeholder="Nội dung chatbot sẽ ưu tiên dùng khi khớp từ khóa."
                                         required
                                     />
                                 </div>
+                            </div>
+
+                            <div className="mt-5 border-t border-blue-100 pt-5">
+                                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                                    <input
+                                        value={previewQuestion}
+                                        onChange={(event) => {
+                                            setPreviewQuestion(event.target.value);
+                                            setQaResult(null);
+                                        }}
+                                        placeholder="Nhập một câu khách có thể hỏi để kiểm tra độ khớp"
+                                        className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => runKnowledgeCheck()}
+                                        disabled={qaLoading}
+                                        className="rounded-xl border border-teal-200 bg-teal-50 px-5 py-3 text-sm font-black text-teal-700 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {qaLoading ? 'Đang kiểm tra...' : 'Kiểm tra trước'}
+                                    </button>
+                                </div>
+
+                                {qaResult && <KnowledgeQaReport result={qaResult} />}
                             </div>
 
                             <div className="mt-6 flex justify-end">
@@ -463,6 +595,72 @@ function SummaryCard({ label, value, tone }) {
         <div className={`rounded-2xl p-5 ${toneClass}`}>
             <p className="text-3xl font-black">{value}</p>
             <p className="mt-1 text-sm font-black uppercase opacity-80">{label}</p>
+        </div>
+    );
+}
+
+function QualityMetric({ label, value, detail, tone = 'blue' }) {
+    const valueClass = tone === 'rose' ? 'text-rose-600' : 'text-blue-800';
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <p className="text-xs font-black uppercase text-slate-500">{label}</p>
+            <p className={`mt-1 text-2xl font-black ${valueClass}`}>{value}</p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">{detail}</p>
+        </div>
+    );
+}
+
+function KnowledgeQaReport({ result }) {
+    return (
+        <div className={`mt-4 rounded-xl border p-4 ${result.ready ? 'border-teal-200 bg-teal-50/60' : 'border-rose-200 bg-rose-50/60'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <p className={`text-sm font-black ${result.ready ? 'text-teal-800' : 'text-rose-700'}`}>
+                        {result.ready ? 'Đạt kiểm tra chất lượng' : 'Cần chỉnh sửa trước khi lưu'}
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">Điểm sẵn sàng: {result.readinessScore}/100</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-black ${result.ready ? 'bg-teal-100 text-teal-800' : 'bg-rose-100 text-rose-700'}`}>
+                    {result.errors.length} lỗi · {result.warnings.length} cảnh báo
+                </span>
+            </div>
+
+            {result.errors.length > 0 && (
+                <div className="mt-3 space-y-1 text-sm font-bold text-rose-700">
+                    {result.errors.map((message) => <p key={message}>Lỗi: {message}</p>)}
+                </div>
+            )}
+            {result.warnings.length > 0 && (
+                <div className="mt-3 space-y-1 text-sm font-semibold text-amber-700">
+                    {result.warnings.map((message) => <p key={message}>Cảnh báo: {message}</p>)}
+                </div>
+            )}
+
+            {result.preview.length > 0 && (
+                <div className="mt-4 overflow-x-auto rounded-lg border border-white/80 bg-white">
+                    <table className="w-full min-w-[560px] text-left text-xs">
+                        <thead className="bg-slate-50 font-black uppercase text-slate-500">
+                            <tr>
+                                <th className="px-3 py-2">Câu hỏi kiểm tra</th>
+                                <th className="px-3 py-2 text-center">Hạng</th>
+                                <th className="px-3 py-2 text-center">Điểm khớp</th>
+                                <th className="px-3 py-2">Khớp cao nhất</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {result.preview.map((item) => (
+                                <tr key={item.question}>
+                                    <td className="px-3 py-2 font-bold text-slate-700">{item.question}</td>
+                                    <td className="px-3 py-2 text-center font-black text-blue-700">{item.candidateRank || '-'}</td>
+                                    <td className="px-3 py-2 text-center font-black text-teal-700">{Math.round(item.candidateScore * 100)}%</td>
+                                    <td className="px-3 py-2 font-semibold text-slate-500">{item.topMatches[0]?.title || 'Không có kết quả'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 }

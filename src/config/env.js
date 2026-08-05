@@ -10,7 +10,10 @@ const getDefaultBackendUrl = () => {
         return 'http://localhost:8080';
     }
 
-    return `${protocol}//${hostname}:8080`;
+    const isLocalDevelopment = hostname === 'localhost' || hostname === '127.0.0.1';
+    return isLocalDevelopment
+        ? `${protocol}//${hostname}:8080`
+        : window.location.origin;
 };
 
 const DEFAULT_BACKEND_URL = getDefaultBackendUrl();

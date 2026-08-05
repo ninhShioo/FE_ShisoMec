@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useContext, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import { useLocation, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import api from '../services/api';
 import { AuthContext } from '../context/auth-context';
 import { SOCKET_URL } from '../config/env';
@@ -17,9 +18,12 @@ export default function ChatBox() {
     const [conversationFilter, setConversationFilter] = useState('all');
     const [input, setInput] = useState('');
     const [assistantTyping, setAssistantTyping] = useState(false);
+    const [feedbackReasonFor, setFeedbackReasonFor] = useState(null);
     const socketRef = useRef(null);
     const messagesEndRef = useRef(null);
     const selectedPatientRef = useRef(null);
+    const messageSequenceRef = useRef(0);
+    const maxMessageLength = 1200;
     const chatOpenParams = useMemo(() => {
         const params = new URLSearchParams(location.search);
         return {
@@ -61,7 +65,7 @@ export default function ChatBox() {
         if (typeof metadata === 'object') return metadata;
         try {
             return JSON.parse(metadata);
-        } catch (error) {
+        } catch {
             return {};
         }
     };
@@ -171,6 +175,10 @@ export default function ChatBox() {
         socketRef.current.on('assistant_typing', (data) => {
             setAssistantTyping(Boolean(data?.typing));
         });
+        socketRef.current.on('chat_error', (data) => {
+            setAssistantTyping(false);
+            toast.error(data?.message || 'Không thể gửi tin nhắn.');
+        });
 
         return () => {
             socketRef.current?.disconnect();
@@ -227,9 +235,18 @@ export default function ChatBox() {
         const content = String(message || '').trim();
         if (!content || !socketRef.current) return;
         if (isStaffChat && !selectedPatient) return;
+        if (content.length > maxMessageLength) {
+            toast.error(`Tin nhắn chỉ được tối đa ${maxMessageLength} ký tự.`);
+            return;
+        }
+
+        messageSequenceRef.current += 1;
+        const clientMessageId = globalThis.crypto?.randomUUID?.()
+            || `chat-${socketRef.current.id || user?.id || 'user'}-${messageSequenceRef.current}`;
 
         socketRef.current.emit('send_message', {
             message: content,
+            clientMessageId,
             receiverId: isStaffChat ? selectedPatient.id : undefined
         });
         if (!isStaffChat) {
@@ -264,16 +281,18 @@ export default function ChatBox() {
         }
     };
 
-    const submitAiFeedback = async (messageId, rating) => {
+    const submitAiFeedback = async (messageId, rating, comment = '') => {
         if (!messageId) return;
 
         try {
-            await api.post(`/chat/messages/${messageId}/feedback`, { rating });
+            await api.post(`/chat/messages/${messageId}/feedback`, { rating, comment });
             setMessages((current) => current.map((message) => (
                 message.id === messageId ? { ...message, aiFeedback: rating } : message
             )));
+            setFeedbackReasonFor(null);
         } catch (error) {
             console.error('Không thể gửi đánh giá AI:', error);
+            toast.error(error.response?.data?.message || 'Không thể gửi đánh giá lúc này.');
         }
     };
 
@@ -309,7 +328,7 @@ export default function ChatBox() {
         closed: 'Đã đóng'
     }[status] || 'Mới');
 
-    if (!user) return null;
+    if (!user || !['patient', 'staff', 'admin'].includes(user.role)) return null;
 
     const title = isStaffChat ? 'Hộp chat khách hàng' : 'Trợ lý AI nha khoa';
 
@@ -510,7 +529,7 @@ export default function ChatBox() {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => submitAiFeedback(msg.id, 'unhelpful')}
+                                                    onClick={() => setFeedbackReasonFor((current) => current === msg.id ? null : msg.id)}
                                                     className={`rounded-full border px-3 py-1.5 font-black transition ${
                                                         msg.aiFeedback === 'unhelpful'
                                                             ? 'border-rose-300 bg-rose-100 text-rose-700'
@@ -522,6 +541,23 @@ export default function ChatBox() {
                                                 {msg.aiFeedback && (
                                                     <span className="self-center font-bold text-slate-400">Đã ghi nhận</span>
                                                 )}
+                                            </div>
+                                        )}
+                                        {isAssistant && !isStaffChat && feedbackReasonFor === msg.id && (
+                                            <div className="mt-2 max-w-[min(86%,620px)] rounded-xl border border-rose-100 bg-white p-3 shadow-sm">
+                                                <p className="text-xs font-black text-slate-600">Câu trả lời chưa ổn ở điểm nào?</p>
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {['Sai thông tin', 'Không đúng ý', 'Thiếu thông tin', 'Khó hiểu'].map((reason) => (
+                                                        <button
+                                                            key={reason}
+                                                            type="button"
+                                                            onClick={() => submitAiFeedback(msg.id, 'unhelpful', reason)}
+                                                            className="rounded-full border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-black text-rose-700 transition hover:border-rose-200 hover:bg-rose-100"
+                                                        >
+                                                            {reason}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -557,6 +593,7 @@ export default function ChatBox() {
                             <input
                                 value={input}
                                 onChange={(event) => setInput(event.target.value)}
+                                maxLength={maxMessageLength}
                                 disabled={isStaffChat && !selectedPatient}
                                 placeholder="Nhập tin nhắn..."
                                 className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed"

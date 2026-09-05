@@ -2,6 +2,13 @@ const getText = (notification) => `${notification?.title || ''} ${notification?.
 const recentlyOpenedNotificationKey = 'recentlyOpenedNotificationId';
 const recentlyOpenedNotificationTtlMs = 4200;
 
+const normalizeText = (value) => String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase();
+
 const findAppointmentId = (notification) => {
     const text = getText(notification);
     const match = text.match(/(?:lịch hẹn|lich hen|appointment)\s*#?(\d+)/i) || text.match(/#(\d+)/);
@@ -11,9 +18,22 @@ const findAppointmentId = (notification) => {
 const findInvoiceId = (notification) => {
     const text = getText(notification);
     const match = text.match(/INV-?(\d+)/i)
-        || text.match(/(?:hóa đơn|hoa don|invoice)\s*#?(\d+)/i)
-        || text.match(/#(\d+)/);
+        || text.match(/(?:hóa đơn|hoa don|invoice)\s*#?(\d+)/i);
     return match ? match[1] : '';
+};
+
+const findInvoiceAppointmentId = (notification) => {
+    const text = getText(notification);
+    const match = text.match(/HD-?(\d+)/i);
+    return match ? match[1] : '';
+};
+
+const isInvoiceFollowUpNotification = (notification) => {
+    const text = normalizeText(getText(notification));
+    return text.includes('kham hoan thanh')
+        || text.includes('kham xong')
+        || text.includes('lap hoa don')
+        || text.includes('thu tien');
 };
 
 const findChatKeyword = (notification) => {
@@ -33,6 +53,17 @@ export const resolveNotificationTarget = (notification, userRole) => {
     const type = notification?.type || 'system';
     const isPatient = userRole === 'patient';
 
+    if (!isPatient && isInvoiceFollowUpNotification(notification)) {
+        const invoiceId = findInvoiceId(notification);
+        const appointmentId = findAppointmentId(notification);
+        const highlightQuery = invoiceId
+            ? `&highlightType=invoice&highlightId=${invoiceId}`
+            : appointmentId
+                ? `&highlightType=appointment&highlightId=${appointmentId}`
+                : '';
+        return `/dashboard?tab=invoices${highlightQuery}`;
+    }
+
     if (type === 'appointment') {
         const appointmentId = findAppointmentId(notification);
         return isPatient
@@ -42,9 +73,15 @@ export const resolveNotificationTarget = (notification, userRole) => {
 
     if (type === 'payment') {
         const invoiceId = findInvoiceId(notification);
+        const appointmentId = findInvoiceAppointmentId(notification) || (!invoiceId ? findAppointmentId(notification) : '');
+        const highlightQuery = invoiceId
+            ? `&highlightType=invoice&highlightId=${invoiceId}`
+            : appointmentId
+                ? `&highlightType=appointment&highlightId=${appointmentId}`
+                : '';
         return isPatient
-            ? `/profile?tab=invoices${invoiceId ? `&highlightType=invoice&highlightId=${invoiceId}` : ''}`
-            : `/dashboard?tab=invoices${invoiceId ? `&highlightType=invoice&highlightId=${invoiceId}` : ''}`;
+            ? `/profile?tab=invoices${highlightQuery}`
+            : `/dashboard?tab=invoices${highlightQuery}`;
     }
 
     if (type === 'leave') {

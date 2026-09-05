@@ -17,6 +17,13 @@ const getQrImageUrl = (paymentUrl) => (
 
 const isInvoicePaid = (invoice) => invoice?.status === 'paid' || Number(invoice?.outstandingAmount || 0) <= 0;
 
+const getInvoiceDisplayCode = (invoice) => `HD-${invoice?.appointmentId || invoice?.id}`;
+
+const isInvoiceHighlighted = (invoice, highlight) => (
+    (highlight.type === 'invoice' && highlight.id === String(invoice.id))
+    || (highlight.type === 'appointment' && highlight.id === String(invoice.appointmentId))
+);
+
 const paymentLabels = {
     cash: 'Tiền mặt',
     card: 'Thẻ',
@@ -55,13 +62,23 @@ export default function Profile() {
         const params = new URLSearchParams(location.search);
         if (params.get('method') !== 'vnpay') return;
 
+        const invoiceCode = params.get('invoiceCode')
+            || (params.get('appointmentId') ? `HD-${params.get('appointmentId')}` : '')
+            || (params.get('invoiceId') ? `#${params.get('invoiceId')}` : '');
         if (params.get('payment') === 'success') {
-            toast.success(`Thanh toán VNPay thành công${params.get('invoiceId') ? ` cho hóa đơn INV-${params.get('invoiceId')}` : ''}.`);
+            toast.success(`Thanh toán VNPay thành công${invoiceCode ? ` cho hóa đơn ${invoiceCode}` : ''}.`);
         } else {
             toast.error('Thanh toán VNPay chưa thành công hoặc đã bị hủy.');
         }
 
-        navigate('/profile', { replace: true });
+        const appointmentId = params.get('appointmentId');
+        const invoiceId = params.get('invoiceId');
+        const highlightQuery = appointmentId
+            ? `&highlightType=appointment&highlightId=${appointmentId}`
+            : invoiceId
+                ? `&highlightType=invoice&highlightId=${invoiceId}`
+                : '';
+        navigate(`/profile?tab=invoices${highlightQuery}`, { replace: true });
     }, [location.search, navigate]);
 
     useEffect(() => {
@@ -94,13 +111,20 @@ export default function Profile() {
     useEffect(() => {
         if (loading || !highlight.type || !highlight.id) return;
 
-        const targetPrefix = highlight.type === 'invoice' ? 'profile-invoice-row' : 'profile-appointment-row';
         const timer = window.setTimeout(() => {
-            document.getElementById(`${targetPrefix}-${highlight.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (activeTab === 'invoices') {
+                const targetInvoice = invoices.find((invoice) => isInvoiceHighlighted(invoice, highlight));
+                if (targetInvoice) {
+                    document.getElementById(`profile-invoice-row-${targetInvoice.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                return;
+            }
+
+            document.getElementById(`profile-appointment-row-${highlight.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 120);
 
         return () => window.clearTimeout(timer);
-    }, [loading, highlight.type, highlight.id, activeTab]);
+    }, [activeTab, invoices, loading, highlight]);
 
     useEffect(() => {
         if (!user) return;
@@ -143,7 +167,7 @@ export default function Profile() {
         no_show: 'Không đến',
         pending: 'Chờ xác nhận',
         confirmed: 'Đã xác nhận',
-        completed: 'Hoàn thành',
+        completed: 'Đã khám',
         cancelled: 'Đã hủy'
     }[status] || status);
 
@@ -278,8 +302,17 @@ export default function Profile() {
             const res = await api.post('/upload/single', uploadData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            setProfileForm((current) => ({ ...current, avatar: res.data.data.url }));
-            toast.success('Đã tải ảnh đại diện.');
+            const avatarUrl = res.data.data.url;
+            const nextProfile = {
+                fullName: profileForm.fullName.trim() || user.fullName,
+                phone: profileForm.phone.trim(),
+                avatar: avatarUrl
+            };
+
+            await api.put(`/users/${user.id}`, nextProfile);
+            setProfileForm((current) => ({ ...current, avatar: avatarUrl }));
+            await refreshUser();
+            toast.success('Đã tải và lưu ảnh đại diện.');
         } catch (err) {
             toast.error(err.response?.data?.message || 'Không thể tải ảnh đại diện.');
         } finally {
@@ -318,7 +351,7 @@ export default function Profile() {
 
         return [
             ['Lịch sắp tới', upcoming, 'Lịch chờ hoặc đã xác nhận', 'blue'],
-            ['Đã khám', completed, 'Lịch hẹn hoàn thành', 'emerald'],
+            ['Đã khám', completed, 'Lịch hẹn đã khám xong', 'emerald'],
             ['Hồ sơ khám', records.length, 'Kết quả điều trị đã lưu', 'violet'],
             ['Chưa thanh toán', unpaid, 'Hóa đơn cần theo dõi', 'rose']
         ];
@@ -522,9 +555,12 @@ export default function Profile() {
                                                 <tr
                                                     key={invoice.id}
                                                     id={`profile-invoice-row-${invoice.id}`}
-                                                    className={`hover:bg-blue-50/40 ${getHighlightClass(highlight.type === 'invoice' && highlight.id === String(invoice.id))}`}
+                                                    className={`hover:bg-blue-50/40 ${getHighlightClass(isInvoiceHighlighted(invoice, highlight))}`}
                                                 >
-                                                    <td className="px-4 py-4 align-middle font-black text-blue-950">INV-{invoice.id}</td>
+                                                    <td className="px-4 py-4 align-middle">
+                                                        <p className="font-black text-blue-950">{getInvoiceDisplayCode(invoice)}</p>
+                                                        {invoice.appointmentId && <p className="mt-1 text-xs font-bold text-slate-400">Lịch #{invoice.appointmentId}</p>}
+                                                    </td>
                                                     <td className="px-4 py-4 align-middle text-sm text-slate-600">{new Date(invoice.createdAt).toLocaleDateString('vi-VN')}</td>
                                                     <td className="px-4 py-4 align-middle text-sm text-slate-600">{paymentLabels[invoice.lastPaymentMethod || invoice.paymentMethod] || invoice.paymentMethod || '-'}</td>
                                                     <td className="px-4 py-4 align-middle">
@@ -598,7 +634,7 @@ function VnpayQrModal({ payment, checking, onClose, onCheck }) {
                 <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-emerald-50/70 p-6">
                     <div>
                         <p className="text-sm font-black uppercase text-emerald-700">VNPay QR</p>
-                        <h3 className="mt-1 text-2xl font-black text-blue-950">Thanh toán INV-{payment.invoice.id}</h3>
+                        <h3 className="mt-1 text-2xl font-black text-blue-950">Thanh toán {getInvoiceDisplayCode(payment.invoice)}</h3>
                         <p className="mt-2 text-sm font-semibold text-slate-600">Quét mã để thanh toán hóa đơn nha khoa.</p>
                     </div>
                     <button type="button" onClick={onClose} className="rounded-xl border border-emerald-100 bg-white px-4 py-2 text-sm font-black text-slate-600 hover:bg-emerald-50">Đóng</button>
@@ -640,7 +676,7 @@ function VnpayQrModal({ payment, checking, onClose, onCheck }) {
 function Field({ label, value, onChange, ...props }) {
     return (
         <label className="block text-sm font-bold text-slate-700">
-            {label}
+            {label}{props.required && <span className="ml-1 text-rose-500">*</span>}
             <input value={value} onChange={event => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-500" {...props} />
         </label>
     );

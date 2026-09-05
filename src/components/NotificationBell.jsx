@@ -36,6 +36,16 @@ const visibleTypesByRole = {
 
 const getVisibleTypes = (role) => visibleTypesByRole[role] || ['appointment', 'payment', 'chat'];
 
+const getNotificationKey = (notification) => {
+    if (notification?.id) return `id:${notification.id}`;
+    return [
+        notification?.type || 'system',
+        notification?.title || '',
+        notification?.message || '',
+        Math.floor(new Date(notification?.createdAt || 0).getTime() / 5000)
+    ].join('|');
+};
+
 export default function NotificationBell() {
     const { user } = useContext(AuthContext);
     const navigate = useNavigate();
@@ -45,6 +55,7 @@ export default function NotificationBell() {
     const [loading, setLoading] = useState(false);
     const [typeFilter, setTypeFilter] = useState('all');
     const dropdownRef = useRef(null);
+    const seenNotificationKeysRef = useRef(new Set());
 
     const visibleTypes = useMemo(() => getVisibleTypes(user?.role), [user?.role]);
     const visibleTypeEntries = useMemo(
@@ -68,7 +79,9 @@ export default function NotificationBell() {
         try {
             setLoading(true);
             const res = await api.get('/notifications');
-            setNotifications(res.data.data || []);
+            const data = res.data.data || [];
+            seenNotificationKeysRef.current = new Set(data.map(getNotificationKey));
+            setNotifications(data);
             setSummary(res.data.summary || null);
         } catch {
             toast.error('Không thể tải thông báo.');
@@ -85,15 +98,29 @@ export default function NotificationBell() {
         const handleNotification = (notification) => {
             if (!visibleTypes.includes(notification.type || 'system')) return;
 
-            setNotifications((current) => [
-                { ...notification, isRead: 0, id: notification.id || `live-${Date.now()}` },
-                ...current
-            ].slice(0, 50));
+            const key = getNotificationKey(notification);
+            if (seenNotificationKeysRef.current.has(key)) return;
+            seenNotificationKeysRef.current.add(key);
+
+            const normalizedNotification = { ...notification, isRead: 0, id: notification.id || `live-${Date.now()}` };
+            setNotifications((current) => {
+                const isDuplicate = current.some((item) => (
+                    (notification.id && item.id === notification.id)
+                    || (
+                        item.title === notification.title
+                        && item.message === notification.message
+                        && item.type === notification.type
+                        && Math.abs(new Date(item.createdAt || 0).getTime() - new Date(notification.createdAt || 0).getTime()) < 5000
+                    )
+                ));
+
+                if (isDuplicate) return current;
+                return [normalizedNotification, ...current].slice(0, 50);
+            });
             toast(notification.message || notification.title || 'Bạn có thông báo mới.');
         };
 
         socket.on('notification:new', handleNotification);
-        socket.on('notification:role', handleNotification);
 
         return () => socket.disconnect();
     }, [visibleTypes]);

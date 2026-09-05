@@ -5,18 +5,28 @@ import api from '../services/api';
 import { AuthContext } from '../context/auth-context';
 
 export default function VnpayReturn() {
-    const { user } = useContext(AuthContext);
+    const { user, loading: authLoading } = useContext(AuthContext);
     const location = useLocation();
     const navigate = useNavigate();
     const [status, setStatus] = useState('checking');
     const [message, setMessage] = useState('Đang xác nhận giao dịch VNPay...');
+    const [invoiceCode, setInvoiceCode] = useState('');
     const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
     const invoiceId = params.get('vnp_TxnRef')?.split('-')?.[0] || '';
+    const hasVnpayPayload = Boolean(params.get('vnp_TxnRef') && params.get('vnp_SecureHash'));
 
     useEffect(() => {
+        if (authLoading) return undefined;
+
         let mounted = true;
 
         const confirmPayment = async () => {
+            if (!hasVnpayPayload) {
+                setStatus('failed');
+                setMessage('Thiếu dữ liệu giao dịch VNPay. Vui lòng quay lại hóa đơn và kiểm tra trạng thái thanh toán.');
+                return;
+            }
+
             try {
                 const payload = Object.fromEntries(params.entries());
                 const res = await api.post('/invoices/vnpay-confirm', payload);
@@ -24,11 +34,18 @@ export default function VnpayReturn() {
 
                 setStatus('success');
                 setMessage(res.data?.message || 'Đã ghi nhận thanh toán VNPay.');
+                setInvoiceCode(res.data?.data?.invoiceCode || '');
                 toast.success('Đã ghi nhận thanh toán VNPay.');
 
+                const appointmentId = res.data?.data?.appointmentId;
+                const highlightQuery = appointmentId
+                    ? `&highlightType=appointment&highlightId=${appointmentId}`
+                    : invoiceId
+                        ? `&highlightType=invoice&highlightId=${invoiceId}`
+                        : '';
                 const target = user?.role === 'patient'
-                    ? `/profile?tab=invoices${invoiceId ? `&highlightType=invoice&highlightId=${invoiceId}` : ''}`
-                    : `/dashboard?tab=invoices${invoiceId ? `&highlightType=invoice&highlightId=${invoiceId}` : ''}`;
+                    ? `/profile?tab=invoices${highlightQuery}`
+                    : `/dashboard?tab=invoices${highlightQuery}`;
 
                 window.setTimeout(() => navigate(target, { replace: true }), 1200);
             } catch (error) {
@@ -44,7 +61,7 @@ export default function VnpayReturn() {
         return () => {
             mounted = false;
         };
-    }, [invoiceId, navigate, params, user?.role]);
+    }, [authLoading, hasVnpayPayload, invoiceId, navigate, params, user?.role]);
 
     const isSuccess = status === 'success';
     const isChecking = status === 'checking';
@@ -60,7 +77,7 @@ export default function VnpayReturn() {
                 <p className="mt-4 text-sm font-semibold leading-6 text-slate-600">{message}</p>
                 {invoiceId && (
                     <p className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-800">
-                        Hóa đơn INV-{invoiceId}
+                        Hóa đơn {invoiceCode || `#${invoiceId}`}
                     </p>
                 )}
                 <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">

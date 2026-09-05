@@ -317,7 +317,7 @@ export default function ServicesTab() {
                                     </Select>
                                     <Field label="Giá tiền (VNĐ)" type="number" min="0" required value={formData.price} onChange={value => setFormData({ ...formData, price: value })} />
                                     <Field label="Thời gian (phút)" type="number" min="0" value={formData.duration} onChange={value => setFormData({ ...formData, duration: value })} />
-                                    <Select label="Trạng thái" value={formData.status} onChange={value => setFormData({ ...formData, status: value })}>
+                                    <Select label="Trạng thái" required value={formData.status} onChange={value => setFormData({ ...formData, status: value })}>
                                         <option value="active">Đang mở</option>
                                         <option value="inactive">Tạm ngưng</option>
                                     </Select>
@@ -479,17 +479,17 @@ function SummaryCard({ label, value, tone }) {
 function Field({ label, value, onChange, inputRef, ...props }) {
     return (
         <label className="block text-sm font-bold text-slate-700">
-            {label}
+            {label}{props.required && <span className="ml-1 text-rose-500">*</span>}
             <input ref={inputRef} value={value} onChange={event => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props} />
         </label>
     );
 }
 
-function Select({ label, value, onChange, children }) {
+function Select({ label, value, onChange, children, ...props }) {
     return (
         <label className="block text-sm font-bold text-slate-700">
-            {label}
-            <select value={value} onChange={event => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+            {label}{props.required && <span className="ml-1 text-rose-500">*</span>}
+            <select value={value} onChange={event => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props}>
                 {children}
             </select>
         </label>

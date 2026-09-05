@@ -111,7 +111,7 @@ export default function Register() {
 function Field({ label, name, value, onChange, ...props }) {
     return (
         <label className="block text-sm font-bold text-slate-700">
-            {label}
+            {label}{props.required && <span className="ml-1 text-rose-500">*</span>}
             <input name={name} value={value} onChange={event => onChange(name, event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props} />
         </label>
     );

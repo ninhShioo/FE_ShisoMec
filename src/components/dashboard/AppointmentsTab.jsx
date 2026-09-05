@@ -18,7 +18,7 @@ const workflowStatusSteps = [
     ['confirmed', 'Đã xác nhận'],
     ['arrived', 'Đã đến'],
     ['in_progress', 'Đang khám'],
-    ['completed', 'Hoàn thành']
+    ['completed', 'Khám xong']
 ];
 
 const getStatusMeta = (status) => ({
@@ -26,7 +26,7 @@ const getStatusMeta = (status) => ({
     confirmed: ['Đã xác nhận', 'bg-blue-50 text-blue-700'],
     arrived: ['Khách đã đến', 'bg-cyan-50 text-cyan-700'],
     in_progress: ['Đang khám', 'bg-indigo-50 text-indigo-700'],
-    completed: ['Hoàn thành', 'bg-emerald-50 text-emerald-700'],
+    completed: ['Khám xong', 'bg-emerald-50 text-emerald-700'],
     cancelled: ['Đã hủy', 'bg-rose-50 text-rose-700'],
     no_show: ['Không đến', 'bg-slate-100 text-slate-600']
 }[status] || [status, 'bg-slate-100 text-slate-600']);
@@ -81,6 +81,8 @@ export default function AppointmentsTab() {
     const [rescheduleForm, setRescheduleForm] = useState({ appointmentDate: '', appointmentTime: '', reason: '', note: '' });
     const [filters, setFilters] = useState({ date: '', dentistId: 'all', status: 'all', sort: 'date_desc' });
     const [patientRecordHistory, setPatientRecordHistory] = useState([]);
+    const [detailRecordHistory, setDetailRecordHistory] = useState([]);
+    const [loadingDetailHistory, setLoadingDetailHistory] = useState(false);
 
     useEffect(() => {
         setHighlight(queryHighlight);
@@ -107,6 +109,35 @@ export default function AppointmentsTab() {
 
         return () => window.clearTimeout(timer);
     }, [loading, highlight.type, highlight.id]);
+
+    useEffect(() => {
+        if (!detailAppt?.patientId) {
+            setDetailRecordHistory([]);
+            return undefined;
+        }
+
+        let cancelled = false;
+        const fetchPatientHistory = async () => {
+            try {
+                setLoadingDetailHistory(true);
+                const res = await api.get(`/records/patient/${detailAppt.patientId}`);
+                if (!cancelled) {
+                    setDetailRecordHistory((res.data.data || []).filter(record => record.appointmentId !== detailAppt.id));
+                }
+            } catch {
+                if (!cancelled) setDetailRecordHistory([]);
+            } finally {
+                if (!cancelled) setLoadingDetailHistory(false);
+            }
+        };
+
+        fetchPatientHistory();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [detailAppt?.patientId, detailAppt?.id]);
+
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [uploadingFiles, setUploadingFiles] = useState(false);
     const [createForm, setCreateForm] = useState({
@@ -130,6 +161,15 @@ export default function AppointmentsTab() {
             const resAppt = await api.get('/appointments', { params });
             const nextAppointments = resAppt.data.data || [];
             setAppointments(nextAppointments);
+            setSelectedDentists(current => {
+                const nextSelected = { ...current };
+                nextAppointments.forEach(appointment => {
+                    if (!nextSelected[appointment.id]) {
+                        nextSelected[appointment.id] = appointment.dentistId || appointment.preferredDentistId || '';
+                    }
+                });
+                return nextSelected;
+            });
             setDetailAppt(current => {
                 if (!current) return current;
                 return nextAppointments.find(appointment => appointment.id === current.id) || current;
@@ -246,7 +286,22 @@ export default function AppointmentsTab() {
         }
 
         try {
-            const res = await api.put(`/appointments/${appointmentId}/assign`, { dentistId });
+            const appointment = appointments.find(item => item.id === appointmentId);
+            if (appointment && String(appointment.dentistId || '') === String(dentistId)) {
+                toast('Bác sĩ này đang là bác sĩ phụ trách hiện tại.');
+                return;
+            }
+
+            const note = appointment?.status === 'confirmed'
+                ? window.prompt('Lý do đổi bác sĩ:', 'Bác sĩ bận đột xuất, điều phối bác sĩ khác.')
+                : '';
+            if (appointment?.status === 'confirmed' && note === null) return;
+            if (appointment?.status === 'confirmed' && !note.trim()) {
+                toast.error('Vui lòng nhập lý do để admin duyệt đổi bác sĩ.');
+                return;
+            }
+
+            const res = await api.put(`/appointments/${appointmentId}/assign`, { dentistId, note });
             toast.success(res.data?.message || 'Đã cập nhật bác sĩ phụ trách.');
             fetchData();
         } catch (err) {
@@ -426,7 +481,7 @@ export default function AppointmentsTab() {
     const title = isDentist ? 'Lịch khám của tôi' : 'Tiếp nhận lịch hẹn';
     const description = isDentist
         ? 'Danh sách khách hàng đã được phân công cho bạn.'
-        : 'Theo dõi lịch chờ xác nhận, phân công bác sĩ và xuất hóa đơn sau khi hoàn thành.';
+        : 'Theo dõi lịch chờ xác nhận, phân công bác sĩ và xuất hóa đơn sau khi khám xong.';
     const appointmentTableColumns = isFrontDesk ? 7 : 6;
     const warningAppointments = appointments.filter(appointment => appointment.warnings?.length > 0);
     const pendingCount = appointments.filter(appointment => appointment.status === 'pending').length;
@@ -474,7 +529,7 @@ export default function AppointmentsTab() {
                     </div>
 
                     <div className="mt-4">
-                        <p className="mb-2 text-sm font-bold text-slate-700">Dịch vụ</p>
+                        <p className="mb-2 text-sm font-bold text-slate-700">Dịch vụ <span className="text-rose-500">*</span></p>
                         <div className="grid max-h-48 gap-2 overflow-y-auto rounded-2xl bg-white p-3 md:grid-cols-2 lg:grid-cols-3">
                             {services.map(service => (
                                 <label key={service.id} className="flex cursor-pointer items-center gap-2 rounded-xl p-2 text-sm hover:bg-blue-50">
@@ -512,6 +567,9 @@ export default function AppointmentsTab() {
                                         </p>
                                         <p className="mt-1 text-xs font-semibold text-slate-500">
                                             Lễ tân: {request.requestedByName} · {new Date(request.createdAt).toLocaleString('vi-VN')}
+                                        </p>
+                                        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm font-bold leading-6 text-amber-700">
+                                            Lý do: {request.note || 'Chưa có ghi chú.'}
                                         </p>
                                     </div>
                                     <div className="flex gap-2">
@@ -617,12 +675,30 @@ export default function AppointmentsTab() {
                                     </td>
                                     {isFrontDesk && (
                                         <td className="px-6 py-4">
-                                            {['pending', 'confirmed'].includes(appointment.status) ? (
-                                                <select value={selectedDentists[appointment.id] || ''} onChange={event => setSelectedDentists({ ...selectedDentists, [appointment.id]: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500">
-                                                    <option value="">Chọn bác sĩ</option>
-                                                    {dentists.map(dentist => <option key={dentist.id} value={dentist.id}>{dentist.fullName}</option>)}
-                                                </select>
-                                            ) : <span className="text-sm font-semibold text-slate-700">{appointment.dentistName || 'Chưa phân công'}</span>}
+                                            <div className="space-y-2">
+                                                {appointment.preferredDentistName && (
+                                                    <p className="rounded-lg bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                                                        Khách chọn dự kiến: {appointment.preferredDentistName}
+                                                    </p>
+                                                )}
+                                                {appointment.dentistName && appointment.preferredDentistName && appointment.dentistName !== appointment.preferredDentistName && (
+                                                    <p className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">
+                                                        Phụ trách hiện tại: {appointment.dentistName}
+                                                    </p>
+                                                )}
+                                                {['pending', 'confirmed'].includes(appointment.status) ? (
+                                                    <select
+                                                        value={selectedDentists[appointment.id] || appointment.dentistId || appointment.preferredDentistId || ''}
+                                                        onChange={event => setSelectedDentists({ ...selectedDentists, [appointment.id]: event.target.value })}
+                                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                                                    >
+                                                        <option value="">Chọn bác sĩ</option>
+                                                        {dentists.map(dentist => <option key={dentist.id} value={dentist.id}>{dentist.fullName}</option>)}
+                                                    </select>
+                                                ) : (
+                                                    <span className="text-sm font-semibold text-slate-700">{appointment.dentistName || 'Chưa phân công'}</span>
+                                                )}
+                                            </div>
                                         </td>
                                     )}
                                     <td className="px-6 py-4 text-center">
@@ -753,28 +829,13 @@ export default function AppointmentsTab() {
                                         <p className="text-xs font-black uppercase text-slate-400">Dịch vụ</p>
                                         <p className="mt-2 text-sm font-black leading-6 text-blue-950">{selectedAppt.serviceNames || 'Chưa có dịch vụ'}</p>
                                     </div>
-                                    <div>
-                                        <p className="text-xs font-black uppercase text-slate-400">Lịch sử khám cũ</p>
-                                        {loadingHistory ? (
-                                            <p className="mt-2 text-sm font-bold text-slate-500">Đang tải...</p>
-                                        ) : patientRecordHistory.length === 0 ? (
-                                            <p className="mt-2 text-sm font-bold text-slate-500">Chưa có hồ sơ trước đó.</p>
-                                        ) : (
-                                            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto">
-                                                {patientRecordHistory.slice(0, 5).map(record => (
-                                                    <article key={record.id} className="rounded-xl bg-white p-3 text-sm">
-                                                        <p className="font-black text-blue-950">{record.diagnosis}</p>
-                                                        <p className="mt-1 text-xs font-semibold text-slate-500">
-                                                            {record.appointmentDate ? new Date(record.appointmentDate).toLocaleDateString('vi-VN') : ''} · {record.dentistName}
-                                                        </p>
-                                                        {record.toothPositions?.length > 0 && (
-                                                            <p className="mt-1 text-xs font-bold text-blue-700">Răng: {record.toothPositions.join(', ')}</p>
-                                                        )}
-                                                    </article>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
+                                    <PatientRecordHistoryPreview
+                                        records={patientRecordHistory}
+                                        loading={loadingHistory}
+                                        title="Hồ sơ trước của bệnh nhân"
+                                        emptyText="Chưa có hồ sơ trước đó."
+                                        embedded
+                                    />
                                     <div className="grid gap-4">
                                         <Field label="Ngày tái khám" type="date" min={minNextAppointmentDate} value={recordForm.nextAppointmentDate} onChange={value => setRecordForm({ ...recordForm, nextAppointmentDate: value })} />
                                         <Field label="Ghi chú tái khám" value={recordForm.nextAppointmentNote} onChange={value => setRecordForm({ ...recordForm, nextAppointmentNote: value })} />
@@ -798,7 +859,7 @@ export default function AppointmentsTab() {
                             <button type="button" onClick={() => setSelectedAppt(null)} className="rounded-xl border border-blue-100 bg-white px-5 py-3 text-sm font-black text-slate-600 hover:bg-blue-50">
                                 Hủy
                             </button>
-                            <button type="submit" className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-black text-white hover:bg-blue-800">Lưu hồ sơ và hoàn thành</button>
+                            <button type="submit" className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-black text-white hover:bg-blue-800">Lưu hồ sơ và báo chờ thanh toán</button>
                         </div>
                     </form>
                 </ModalBackdrop>
@@ -807,11 +868,16 @@ export default function AppointmentsTab() {
             {detailAppt && (
                 <AppointmentDetailModal
                     appointment={detailAppt}
+                    changeRequests={changeRequests}
+                    patientRecordHistory={detailRecordHistory}
+                    loadingPatientRecordHistory={loadingDetailHistory}
+                    isAdmin={user.role === 'admin'}
                     isFrontDesk={isFrontDesk}
                     isDentist={isDentist}
                     onClose={() => setDetailAppt(null)}
                     onCancel={() => handleUpdateStatus(detailAppt.id, 'cancelled')}
                     onCreateInvoice={() => handleCreateInvoice(detailAppt.id)}
+                    onReviewDentistChange={handleReviewDentistChange}
                     onStatusChange={(status) => handleQuickStatus(detailAppt, status)}
                     onReschedule={() => openReschedule(detailAppt)}
                     onOpenRecord={() => {
@@ -852,7 +918,9 @@ function ModalBackdrop({ children, onClose }) {
 function Field({ label, value, onChange, ...props }) {
     return (
         <div>
-            <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
+            <label className="mb-2 block text-sm font-bold text-slate-700">
+                {label}{props.required && <span className="ml-1 text-rose-500">*</span>}
+            </label>
             <input value={value} onChange={event => onChange(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props} />
         </div>
     );
@@ -861,7 +929,9 @@ function Field({ label, value, onChange, ...props }) {
 function Select({ label, value, onChange, children, ...props }) {
     return (
         <div>
-            <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
+            <label className="mb-2 block text-sm font-bold text-slate-700">
+                {label}{props.required && <span className="ml-1 text-rose-500">*</span>}
+            </label>
             <select value={value} onChange={event => onChange(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props}>
                 {children}
             </select>
@@ -872,7 +942,9 @@ function Select({ label, value, onChange, children, ...props }) {
 function Textarea({ label, value, onChange, ...props }) {
     return (
         <div>
-            <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
+            <label className="mb-2 block text-sm font-bold text-slate-700">
+                {label}{props.required && <span className="ml-1 text-rose-500">*</span>}
+            </label>
             <textarea rows="3" value={value} onChange={event => onChange(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props} />
         </div>
     );
@@ -1010,6 +1082,54 @@ function TreatmentSessions({ sessions, minDate, onAdd, onUpdate, onRemove }) {
     );
 }
 
+function PatientRecordHistoryPreview({ records, loading, title = 'Hồ sơ trước của bệnh nhân', emptyText = 'Chưa có hồ sơ trước đó.', embedded = false }) {
+    return (
+        <div className={embedded ? '' : 'rounded-2xl border border-blue-100 bg-white p-5'}>
+            <div className="flex items-center justify-between gap-3">
+                <p className="font-black text-blue-950">{title}</p>
+                {records.length > 0 && (
+                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                        {records.length} lần khám
+                    </span>
+                )}
+            </div>
+
+            {loading ? (
+                <p className="mt-3 text-sm font-bold text-slate-500">Đang tải lịch sử hồ sơ...</p>
+            ) : records.length === 0 ? (
+                <p className="mt-3 text-sm font-bold text-slate-500">{emptyText}</p>
+            ) : (
+                <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
+                    {records.slice(0, 6).map((record) => (
+                        <article key={record.id} className={`rounded-xl text-sm ${embedded ? 'bg-white p-3' : 'border border-blue-50 bg-[#F8FCFC] p-4'}`}>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <p className="font-black text-blue-950">{record.diagnosis || 'Chưa có chẩn đoán'}</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                                        {record.appointmentDate ? new Date(record.appointmentDate).toLocaleDateString('vi-VN') : '-'} · {record.dentistName || 'Bác sĩ phụ trách'}
+                                    </p>
+                                </div>
+                                {record.nextAppointmentDate && (
+                                    <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">
+                                        Tái khám {new Date(record.nextAppointmentDate).toLocaleDateString('vi-VN')}
+                                    </span>
+                                )}
+                            </div>
+                            {record.serviceNames && <p className="mt-2 text-xs font-bold text-slate-600">Dịch vụ: {record.serviceNames}</p>}
+                            {record.toothPositions?.length > 0 && (
+                                <p className="mt-1 text-xs font-bold text-blue-700">Răng đã điều trị: {record.toothPositions.join(', ')}</p>
+                            )}
+                            {record.treatmentPlan && (
+                                <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-slate-600">{record.treatmentPlan}</p>
+                            )}
+                        </article>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function StatusTimeline({ history }) {
     return (
         <div className="rounded-2xl border border-blue-100 bg-white p-5">
@@ -1036,10 +1156,29 @@ function StatusTimeline({ history }) {
     );
 }
 
-function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, onCancel, onCreateInvoice, onStatusChange, onReschedule, onOpenRecord }) {
+function AppointmentDetailModal({
+    appointment,
+    changeRequests = [],
+    patientRecordHistory = [],
+    loadingPatientRecordHistory = false,
+    isAdmin,
+    isFrontDesk,
+    isDentist,
+    onClose,
+    onCancel,
+    onCreateInvoice,
+    onReviewDentistChange,
+    onStatusChange,
+    onReschedule,
+    onOpenRecord
+}) {
     const [statusLabel, statusClass] = getStatusMeta(appointment.status);
     const currentStepIndex = workflowStatusSteps.findIndex(([key]) => key === appointment.status);
     const isCancelled = appointment.status === 'cancelled';
+    const pendingDentistChangeRequest = changeRequests.find((request) => (
+        request.status === 'pending'
+        && Number(request.appointmentId) === Number(appointment.id)
+    ));
 
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -1085,10 +1224,18 @@ function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, 
                     <section className="space-y-4">
                         <div className="grid gap-3 sm:grid-cols-2">
                             <InfoBox label="Khách hàng" value={appointment.patientName} helper={appointment.patientPhone || 'Chưa có số điện thoại'} />
-                            <InfoBox label="Bác sĩ phụ trách" value={appointment.dentistName || 'Chưa phân công'} helper="Theo phân công hiện tại" />
+                            <InfoBox label="Bác sĩ khách chọn" value={appointment.preferredDentistName || 'Không chọn cụ thể'} helper="Chỉ là lựa chọn dự kiến khi đặt lịch" />
+                            <InfoBox label="Bác sĩ phụ trách" value={appointment.dentistName || 'Chưa phân công'} helper="Theo phân công/xác nhận hiện tại của phòng khám" />
                             <InfoBox label="Dịch vụ" value={appointment.serviceNames || 'Chưa có dịch vụ'} helper={`${appointment.serviceIds?.length || 0} dịch vụ`} />
-                            <InfoBox label="Hóa đơn" value={appointment.invoiceId ? `INV-${appointment.invoiceId}` : 'Chưa có hóa đơn'} helper={appointment.invoiceId ? `${appointment.invoiceStatus} · ${formatCurrency(appointment.invoiceTotalAmount)}` : 'Xuất sau khi hoàn thành khám'} />
+                            <InfoBox label="Hóa đơn" value={appointment.invoiceId ? `HD-${appointment.id}` : 'Chưa có hóa đơn'} helper={appointment.invoiceId ? `${appointment.invoiceStatus} · ${formatCurrency(appointment.invoiceTotalAmount)}` : 'Xuất sau khi khám xong'} />
                         </div>
+
+                        <PatientRecordHistoryPreview
+                            records={patientRecordHistory}
+                            loading={loadingPatientRecordHistory}
+                            title="Hồ sơ trước của bệnh nhân"
+                            emptyText="Bệnh nhân chưa có hồ sơ khám trước đó."
+                        />
 
                         <div className="rounded-2xl border border-blue-100 bg-white p-5">
                             <div className="flex items-center justify-between gap-3">
@@ -1136,6 +1283,39 @@ function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, 
                     </section>
 
                     <aside className="space-y-4">
+                        {isAdmin && pendingDentistChangeRequest && (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                                <p className="text-xs font-black uppercase text-amber-700">Đang chờ duyệt</p>
+                                <h4 className="mt-1 font-black text-blue-950">Yêu cầu đổi bác sĩ phụ trách</h4>
+                                <div className="mt-4 space-y-3 text-sm">
+                                    <MetaRow label="Bác sĩ cũ" value={pendingDentistChangeRequest.oldDentistName || 'Chưa phân công'} />
+                                    <MetaRow label="Bác sĩ mới" value={pendingDentistChangeRequest.newDentistName || '-'} />
+                                    <MetaRow label="Lễ tân yêu cầu" value={pendingDentistChangeRequest.requestedByName || '-'} />
+                                    <MetaRow label="Thời gian" value={pendingDentistChangeRequest.createdAt ? new Date(pendingDentistChangeRequest.createdAt).toLocaleString('vi-VN') : '-'} />
+                                </div>
+                                <div className="mt-4 rounded-xl bg-white px-4 py-3">
+                                    <p className="text-xs font-black uppercase text-slate-400">Lý do / ghi chú</p>
+                                    <p className="mt-2 text-sm font-bold leading-6 text-slate-700">{pendingDentistChangeRequest.note || 'Chưa có ghi chú.'}</p>
+                                </div>
+                                <div className="mt-4 grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onReviewDentistChange?.(pendingDentistChangeRequest.id, 'approved')}
+                                        className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700"
+                                    >
+                                        Duyệt
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => onReviewDentistChange?.(pendingDentistChangeRequest.id, 'rejected')}
+                                        className="rounded-xl bg-white px-4 py-3 text-sm font-black text-slate-600 hover:bg-slate-100"
+                                    >
+                                        Từ chối
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="rounded-2xl border border-blue-100 bg-white p-5">
                             <p className="font-black text-blue-950">Thao tác nhanh</p>
                             <div className="mt-4 grid gap-2">
@@ -1186,6 +1366,7 @@ function AppointmentDetailModal({ appointment, isFrontDesk, isDentist, onClose, 
                             <p className="font-black text-blue-950">Thông tin hệ thống</p>
                             <dl className="mt-4 space-y-3 text-sm">
                                 <MetaRow label="Mã khách" value={`#${appointment.patientId}`} />
+                                <MetaRow label="Mã bác sĩ khách chọn" value={appointment.preferredDentistId ? `#${appointment.preferredDentistId}` : '-'} />
                                 <MetaRow label="Mã bác sĩ" value={appointment.dentistId ? `#${appointment.dentistId}` : '-'} />
                                 <MetaRow label="Ngày tạo" value={appointment.createdAt ? new Date(appointment.createdAt).toLocaleString('vi-VN') : '-'} />
                             </dl>

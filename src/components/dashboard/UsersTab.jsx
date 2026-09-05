@@ -307,7 +307,7 @@ export default function UsersTab() {
                                 )}
                                 <Field label="Số điện thoại" value={formData.phone} onChange={value => setFormData({ ...formData, phone: value })} />
                                 {isEditing && <Field label="Zalo user ID" value={formData.zaloUserId} onChange={value => setFormData({ ...formData, zaloUserId: value })} />}
-                                <Select label="Vai trò" value={formData.role} onChange={value => setFormData({ ...formData, role: value })}>
+                                <Select label="Vai trò" required value={formData.role} onChange={value => setFormData({ ...formData, role: value })}>
                                     {isEditing && <option value="patient">Khách hàng</option>}
                                     <option value="dentist">Bác sĩ</option>
                                     <option value="staff">Lễ tân</option>
@@ -435,17 +435,17 @@ function SummaryCard({ label, value, tone }) {
 function Field({ label, value, onChange, ...props }) {
     return (
         <label className="block text-sm font-bold text-slate-700">
-            {label}
+            {label}{props.required && <span className="ml-1 text-rose-500">*</span>}
             <input value={value} onChange={event => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100" {...props} />
         </label>
     );
 }
 
-function Select({ label, value, onChange, children }) {
+function Select({ label, value, onChange, children, ...props }) {
     return (
         <label className="block text-sm font-bold text-slate-700">
-            {label}
-            <select value={value} onChange={event => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+            {label}{props.required && <span className="ml-1 text-rose-500">*</span>}
+            <select value={value} onChange={event => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props}>
                 {children}
             </select>
         </label>

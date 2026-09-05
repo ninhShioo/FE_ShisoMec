@@ -18,6 +18,7 @@ export default function ChatBox() {
     const [conversationFilter, setConversationFilter] = useState('all');
     const [input, setInput] = useState('');
     const [assistantTyping, setAssistantTyping] = useState(false);
+    const [isClearingHistory, setIsClearingHistory] = useState(false);
     const [feedbackReasonFor, setFeedbackReasonFor] = useState(null);
     const socketRef = useRef(null);
     const messagesEndRef = useRef(null);
@@ -296,6 +297,27 @@ export default function ChatBox() {
         }
     };
 
+    const clearChatHistory = async () => {
+        if (isStaffChat || isClearingHistory || messages.length === 0) return;
+
+        const confirmed = window.confirm('Bạn có chắc muốn xóa toàn bộ lịch sử chat? Tin nhắn đã xóa sẽ không hiện lại sau khi tải lại trang.');
+        if (!confirmed) return;
+
+        try {
+            setIsClearingHistory(true);
+            await api.delete('/chat/history');
+            setMessages([]);
+            setAssistantTyping(false);
+            setFeedbackReasonFor(null);
+            toast.success('Đã xóa lịch sử chat.');
+        } catch (error) {
+            console.error('Không thể xóa lịch sử chat:', error);
+            toast.error(error.response?.data?.message || 'Không thể xóa lịch sử chat lúc này.');
+        } finally {
+            setIsClearingHistory(false);
+        }
+    };
+
     const closeChat = () => {
         setIsOpen(false);
         const params = new URLSearchParams(location.search);
@@ -424,6 +446,16 @@ export default function ChatBox() {
                                     <h3 className="mt-2 truncate text-lg font-black leading-6 text-blue-950">{title}</h3>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
+                                    {!isStaffChat && messages.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={clearChatHistory}
+                                            disabled={isClearingHistory}
+                                            className="rounded-full border border-rose-100 bg-white px-3 py-2 text-xs font-black text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {isClearingHistory ? 'Đang xóa...' : 'Xóa lịch sử'}
+                                        </button>
+                                    )}
                                     {isStaffChat && selectedPatient && (
                                         <button
                                             type="button"

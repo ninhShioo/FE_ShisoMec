@@ -29,10 +29,18 @@ const getQrImageUrl = (paymentUrl) => (
 
 const isInvoicePaid = (invoice) => invoice?.status === 'paid' || Number(invoice?.outstandingAmount || 0) <= 0;
 
+const getInvoiceDisplayCode = (invoice) => `HD-${invoice?.appointmentId || invoice?.id}`;
+
+const isInvoiceHighlighted = (invoice, highlight) => (
+    (highlight.type === 'invoice' && highlight.id === String(invoice.id))
+    || (highlight.type === 'appointment' && highlight.id === String(invoice.appointmentId))
+);
+
 export default function InvoicesTab() {
     const location = useLocation();
     const navigate = useNavigate();
     const [invoices, setInvoices] = useState([]);
+    const [completedAppointments, setCompletedAppointments] = useState([]);
     const [promotions, setPromotions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedMethods, setSelectedMethods] = useState({});
@@ -58,12 +66,14 @@ export default function InvoicesTab() {
     const fetchInvoices = async () => {
         try {
             setLoading(true);
-            const [invoiceRes, promotionRes] = await Promise.all([
+            const [invoiceRes, promotionRes, appointmentRes] = await Promise.all([
                 api.get('/invoices'),
-                api.get('/promotions/active')
+                api.get('/promotions/active'),
+                api.get('/appointments', { params: { status: 'completed' } })
             ]);
             const nextInvoices = invoiceRes.data.data || [];
             setInvoices(nextInvoices);
+            setCompletedAppointments(appointmentRes.data.data || []);
             setPromotions(promotionRes.data.data || []);
             setSelectedPromotions(Object.fromEntries(nextInvoices.map(invoice => [invoice.id, invoice.promotionId ? String(invoice.promotionId) : ''])));
         } catch {
@@ -94,14 +104,22 @@ export default function InvoicesTab() {
     }, [location.pathname, location.search, navigate, queryHighlight]);
 
     useEffect(() => {
-        if (loading || highlight.type !== 'invoice' || !highlight.id) return;
+        if (loading || !highlight.type || !highlight.id) return;
 
         const timer = window.setTimeout(() => {
-            document.getElementById(`invoice-row-${highlight.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const targetInvoice = invoices.find((invoice) => isInvoiceHighlighted(invoice, highlight));
+            if (targetInvoice) {
+                document.getElementById(`invoice-row-${targetInvoice.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+
+            if (highlight.type === 'appointment') {
+                document.getElementById(`invoice-appointment-row-${highlight.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         }, 120);
 
         return () => window.clearTimeout(timer);
-    }, [loading, highlight.type, highlight.id]);
+    }, [invoices, loading, highlight]);
 
     const mergeInvoice = useCallback((nextInvoice) => {
         setInvoices(current => current.map(invoice => (
@@ -117,6 +135,15 @@ export default function InvoicesTab() {
         setVnpayPayment(current => (
             current?.invoice?.id === nextInvoice.id ? { ...current, invoice: { ...current.invoice, ...nextInvoice } } : current
         ));
+        setPaymentAmounts(current => {
+            const currentAmount = Number(current[nextInvoice.id] || 0);
+            const maxAmount = Number(nextInvoice.outstandingAmount || nextInvoice.totalAmount || 0);
+            if (!currentAmount || currentAmount <= maxAmount) return current;
+
+            const next = { ...current };
+            delete next[nextInvoice.id];
+            return next;
+        });
     }, []);
 
     const refreshInvoicePayment = useCallback(async (invoiceId, showToast = true) => {
@@ -150,6 +177,18 @@ export default function InvoicesTab() {
 
         return () => window.clearInterval(timer);
     }, [vnpayPayment, refreshInvoicePayment]);
+
+    const handleCreateInvoice = async (appointmentId) => {
+        if (!window.confirm(`Lập hóa đơn cho lịch hẹn #${appointmentId}?`)) return;
+
+        try {
+            const res = await api.post('/invoices', { appointmentId, paymentMethod: 'cash' });
+            toast.success(`Đã lập hóa đơn ${getInvoiceDisplayCode(res.data.data)}.`);
+            await fetchInvoices();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không thể lập hóa đơn.');
+        }
+    };
 
     const handlePay = async (id) => {
         if (!window.confirm('Xác nhận khách hàng đã thanh toán hóa đơn này?')) return;
@@ -187,7 +226,7 @@ export default function InvoicesTab() {
     };
 
     const handleApplyPromotion = async (invoice) => {
-        const promotionId = selectedPromotions[invoice.id] || null;
+        const promotionId = selectedPromotions[invoice.id] || '';
         try {
             setApplyingPromotion(current => ({ ...current, [invoice.id]: true }));
             const res = await api.put(`/invoices/${invoice.id}/promotion`, { promotionId });
@@ -219,11 +258,35 @@ export default function InvoicesTab() {
 
         return invoices.filter(invoice => {
             const matchStatus = statusFilter === 'all' || invoice.status === statusFilter;
-            const source = `inv-${invoice.id} ${invoice.patientName || ''} ${invoice.patientPhone || ''}`.toLowerCase();
+            const source = [
+                `inv-${invoice.id}`,
+                getInvoiceDisplayCode(invoice),
+                invoice.appointmentId ? `lich-${invoice.appointmentId}` : '',
+                invoice.appointmentId ? `lịch #${invoice.appointmentId}` : '',
+                invoice.patientName || '',
+                invoice.patientPhone || ''
+            ].join(' ').toLowerCase();
             const matchSearch = !keyword || source.includes(keyword);
             return matchStatus && matchSearch;
         });
     }, [invoices, statusFilter, searchTerm]);
+
+    const pendingInvoiceAppointments = useMemo(() => {
+        const keyword = searchTerm.trim().toLowerCase();
+        return completedAppointments
+            .filter((appointment) => !appointment.invoiceId)
+            .filter((appointment) => {
+                const source = [
+                    `lich-${appointment.id}`,
+                    `lịch #${appointment.id}`,
+                    appointment.patientName || '',
+                    appointment.patientPhone || '',
+                    appointment.dentistName || '',
+                    appointment.serviceNames || ''
+                ].join(' ').toLowerCase();
+                return !keyword || source.includes(keyword);
+            });
+    }, [completedAppointments, searchTerm]);
 
     const paidInvoices = invoices.filter(invoice => invoice.status === 'paid');
     const unpaidInvoices = invoices.filter(invoice => ['unpaid', 'partial'].includes(invoice.status));
@@ -290,6 +353,64 @@ export default function InvoicesTab() {
                 </div>
             </Panel>
 
+            {pendingInvoiceAppointments.length > 0 && (
+                <Panel>
+                    <div className="flex flex-col gap-2 border-b border-blue-100 bg-amber-50/60 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-sm font-black uppercase text-amber-700">Chờ lập hóa đơn</p>
+                            <h3 className="mt-1 text-xl font-black text-blue-950">Lịch khám đã hoàn thành</h3>
+                        </div>
+                        <span className="inline-flex w-fit rounded-full bg-white px-3 py-1 text-xs font-black text-amber-700">
+                            {pendingInvoiceAppointments.length} lịch
+                        </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[900px] table-fixed divide-y divide-amber-100">
+                            <thead>
+                                <tr className="bg-white text-left text-xs font-black uppercase text-slate-500">
+                                    <th className="w-[110px] px-5 py-3">Mã lịch</th>
+                                    <th className="w-[190px] px-5 py-3">Khách hàng</th>
+                                    <th className="w-[170px] px-5 py-3">Thời gian khám</th>
+                                    <th className="w-[190px] px-5 py-3">Bác sĩ</th>
+                                    <th className="px-5 py-3">Dịch vụ</th>
+                                    <th className="w-[150px] px-5 py-3 text-center">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-amber-50">
+                                {pendingInvoiceAppointments.map((appointment) => (
+                                    <tr
+                                        key={appointment.id}
+                                        id={`invoice-appointment-row-${appointment.id}`}
+                                        className={`hover:bg-amber-50/50 ${getHighlightClass(highlight.type === 'appointment' && highlight.id === String(appointment.id))}`}
+                                    >
+                                        <td className="px-5 py-4 align-middle font-black text-blue-950">Lịch #{appointment.id}</td>
+                                        <td className="px-5 py-4 align-middle">
+                                            <p className="font-black text-blue-950">{appointment.patientName}</p>
+                                            {appointment.patientPhone && <p className="text-xs text-slate-500">{appointment.patientPhone}</p>}
+                                        </td>
+                                        <td className="px-5 py-4 align-middle text-sm font-semibold text-slate-600">
+                                            {appointment.appointmentDate ? new Date(appointment.appointmentDate).toLocaleDateString('vi-VN') : '-'}
+                                            {appointment.appointmentTime ? ` · ${String(appointment.appointmentTime).slice(0, 5)}` : ''}
+                                        </td>
+                                        <td className="px-5 py-4 align-middle text-sm font-semibold text-slate-600">{appointment.dentistName || '-'}</td>
+                                        <td className="px-5 py-4 align-middle text-sm text-slate-600">{appointment.serviceNames || '-'}</td>
+                                        <td className="px-5 py-4 text-center align-middle">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCreateInvoice(appointment.id)}
+                                                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-violet-50 px-4 py-2 text-xs font-black text-violet-700 hover:bg-violet-100"
+                                            >
+                                                Lập hóa đơn
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </Panel>
+            )}
+
             <Panel>
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[1180px] table-fixed divide-y divide-blue-100">
@@ -310,9 +431,12 @@ export default function InvoicesTab() {
                                 <tr
                                     key={invoice.id}
                                     id={`invoice-row-${invoice.id}`}
-                                    className={`hover:bg-blue-50/40 ${getHighlightClass(highlight.type === 'invoice' && highlight.id === String(invoice.id))}`}
+                                    className={`hover:bg-blue-50/40 ${getHighlightClass(isInvoiceHighlighted(invoice, highlight))}`}
                                 >
-                                    <td className="px-5 py-4 align-middle font-black text-slate-500">INV-{invoice.id}</td>
+                                    <td className="px-5 py-4 align-middle">
+                                        <p className="font-black text-blue-950">{getInvoiceDisplayCode(invoice)}</p>
+                                        {invoice.appointmentId && <p className="mt-1 text-xs font-bold text-slate-400">Lịch #{invoice.appointmentId}</p>}
+                                    </td>
                                     <td className="px-5 py-4 align-middle">
                                         <p className="font-black text-blue-950">{invoice.patientName}</p>
                                         {invoice.patientPhone && <p className="text-xs text-slate-500">{invoice.patientPhone}</p>}
@@ -389,9 +513,12 @@ export default function InvoicesTab() {
                                                 max={Number(invoice.outstandingAmount || invoice.totalAmount)}
                                                 value={paymentAmounts[invoice.id] || ''}
                                                 onChange={(event) => setPaymentAmounts({ ...paymentAmounts, [invoice.id]: event.target.value })}
-                                                placeholder={`Tối đa ${formatCurrency(invoice.outstandingAmount || invoice.totalAmount)}`}
+                                                placeholder={`Còn phải thu ${formatCurrency(invoice.outstandingAmount || invoice.totalAmount)}`}
                                                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
                                             />
+                                            <p className="text-xs font-semibold text-slate-400">
+                                                Để trống nếu thu toàn bộ số tiền còn lại.
+                                            </p>
                                             </div>
                                         )}
                                     </td>
@@ -484,7 +611,7 @@ function VnpayQrModal({ payment, checking, onClose, onCheck }) {
                 <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-emerald-50/70 p-6">
                     <div>
                         <p className="text-sm font-black uppercase text-emerald-700">VNPay QR</p>
-                        <h3 className="mt-1 text-2xl font-black text-blue-950">Thanh toán INV-{payment.invoice.id}</h3>
+                        <h3 className="mt-1 text-2xl font-black text-blue-950">Thanh toán {getInvoiceDisplayCode(payment.invoice)}</h3>
                         <p className="mt-2 text-sm font-semibold text-slate-600">Khách quét mã, thanh toán xong hệ thống sẽ tự ghi nhận nếu IPN hoạt động.</p>
                     </div>
                     <button type="button" onClick={onClose} className="rounded-xl border border-emerald-100 bg-white px-4 py-2 text-sm font-black text-slate-600 hover:bg-emerald-50">Đóng</button>
@@ -536,7 +663,8 @@ function InvoiceDetailModal({ invoice, loading, onClose }) {
                 <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-blue-50/60 p-6 print:bg-white">
                     <div>
                         <p className="text-sm font-black uppercase text-blue-700">Chi tiết hóa đơn</p>
-                        <h3 className="mt-1 text-2xl font-black text-blue-950">INV-{invoice.id}</h3>
+                        <h3 className="mt-1 text-2xl font-black text-blue-950">{getInvoiceDisplayCode(invoice)}</h3>
+                        {invoice.appointmentId && <p className="mt-1 text-sm font-bold text-slate-500">Lịch hẹn #{invoice.appointmentId}</p>}
                         <p className="mt-2 text-sm font-semibold text-slate-500">{invoice.patientName} · {invoice.patientPhone || invoice.patientEmail || ''}</p>
                     </div>
                     <div className="flex gap-2 print:hidden">

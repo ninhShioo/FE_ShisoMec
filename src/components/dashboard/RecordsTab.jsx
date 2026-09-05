@@ -28,11 +28,56 @@ const parseList = (value) => {
     }
 };
 
+const recordTimeValue = (record) => {
+    const date = String(record.appointmentDate || record.createdAt || '').slice(0, 10);
+    const time = String(record.appointmentTime || '00:00').slice(0, 5);
+    const value = new Date(`${date}T${time}:00`).getTime();
+    return Number.isFinite(value) ? value : 0;
+};
+
+const buildPatientFiles = (records) => {
+    const grouped = new Map();
+    const today = todayValue();
+
+    records.forEach((record) => {
+        const patientId = record.patientId || `unknown-${record.id}`;
+        if (!grouped.has(patientId)) {
+            grouped.set(patientId, {
+                patientId,
+                patientName: record.patientName || `Bệnh nhân #${patientId}`,
+                patientPhone: record.patientPhone,
+                patientEmail: record.patientEmail,
+                visits: []
+            });
+        }
+        grouped.get(patientId).visits.push(record);
+    });
+
+    return Array.from(grouped.values()).map((file) => {
+        const visits = [...file.visits].sort((a, b) => recordTimeValue(b) - recordTimeValue(a));
+        const followUps = visits.filter((record) => record.nextAppointmentDate);
+        const dueFollowUps = followUps.filter((record) => String(record.nextAppointmentDate).slice(0, 10) <= today);
+        const upcomingFollowUps = followUps.filter((record) => String(record.nextAppointmentDate).slice(0, 10) > today);
+        const latestRecord = visits[0];
+
+        return {
+            ...file,
+            visits,
+            latestRecord,
+            visitCount: visits.length,
+            dueFollowUps,
+            upcomingFollowUps,
+            lastVisitAt: latestRecord ? recordTimeValue(latestRecord) : 0
+        };
+    }).sort((a, b) => b.lastVisitAt - a.lastVisitAt);
+};
+
 export default function RecordsTab() {
     const [records, setRecords] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [followUpFilter, setFollowUpFilter] = useState('all');
+    const [selectedPatientFile, setSelectedPatientFile] = useState(null);
     const [selectedRecord, setSelectedRecord] = useState(null);
 
     const fetchRecords = async () => {
@@ -55,14 +100,16 @@ export default function RecordsTab() {
         fetchRecords();
     }, []);
 
+    const patientFiles = useMemo(() => buildPatientFiles(records), [records]);
+
     const summary = useMemo(() => {
         const today = todayValue();
         const due = records.filter(record => record.nextAppointmentDate && String(record.nextAppointmentDate).slice(0, 10) <= today).length;
         const upcoming = records.filter(record => record.nextAppointmentDate && String(record.nextAppointmentDate).slice(0, 10) > today).length;
         const reminded = records.filter(record => record.nextAppointmentReminderSentAt || record.nextAppointmentEmailReminderSentAt).length;
 
-        return { total: records.length, due, upcoming, reminded };
-    }, [records]);
+        return { patientFiles: patientFiles.length, visits: records.length, due, upcoming, reminded };
+    }, [records, patientFiles.length]);
 
     const handleFilterSubmit = (event) => {
         event.preventDefault();
@@ -76,13 +123,14 @@ export default function RecordsTab() {
     return (
         <Panel>
             <div className="border-b border-blue-100 bg-white px-6 py-5">
-                <p className="text-sm font-black uppercase text-blue-700">Hồ sơ khám điện tử</p>
-                <h2 className="mt-1 text-2xl font-black text-blue-950">Danh sách hồ sơ điều trị</h2>
-                <p className="mt-2 text-sm text-slate-500">Tra cứu chẩn đoán, kế hoạch điều trị, răng điều trị, tài liệu và lịch tái khám.</p>
+                <p className="text-sm font-black uppercase text-blue-700">Hồ sơ bệnh án điện tử</p>
+                <h2 className="mt-1 text-2xl font-black text-blue-950">Quản lý hồ sơ theo bệnh nhân</h2>
+                <p className="mt-2 text-sm text-slate-500">Mỗi bệnh nhân có một hồ sơ tổng, bên trong lưu các lần khám, chẩn đoán, điều trị, tài liệu và lịch tái khám.</p>
             </div>
 
-            <div className="grid gap-3 border-b border-blue-100 bg-[#F8FCFC] p-5 md:grid-cols-4">
-                <Summary label="Tổng hồ sơ" value={summary.total} />
+            <div className="grid gap-3 border-b border-blue-100 bg-[#F8FCFC] p-5 md:grid-cols-5">
+                <Summary label="Bệnh án" value={summary.patientFiles} />
+                <Summary label="Lần khám" value={summary.visits} />
                 <Summary label="Tái khám đến hạn" value={summary.due} tone="rose" />
                 <Summary label="Tái khám sắp tới" value={summary.upcoming} tone="blue" />
                 <Summary label="Đã nhắc" value={summary.reminded} tone="emerald" />
@@ -90,7 +138,7 @@ export default function RecordsTab() {
 
             <form onSubmit={handleFilterSubmit} className="flex flex-col gap-3 border-b border-blue-100 bg-white p-5 md:flex-row md:items-end">
                 <label className="flex-1 text-sm font-black text-slate-700">
-                    Tìm hồ sơ
+                    Tìm bệnh án
                     <input
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
@@ -119,43 +167,48 @@ export default function RecordsTab() {
                 <table className="w-full min-w-[980px] text-left">
                     <thead className="bg-blue-50 text-xs font-black uppercase text-slate-500">
                         <tr>
-                            <th className="px-5 py-4">Khách hàng</th>
-                            <th className="px-5 py-4">Ngày khám</th>
-                            <th className="px-5 py-4">Bác sĩ</th>
-                            <th className="px-5 py-4">Chẩn đoán</th>
-                            <th className="px-5 py-4">Tái khám</th>
+                            <th className="px-5 py-4">Bệnh nhân</th>
+                            <th className="px-5 py-4">Lần khám gần nhất</th>
+                            <th className="px-5 py-4">Bác sĩ gần nhất</th>
+                            <th className="px-5 py-4">Chẩn đoán gần nhất</th>
+                            <th className="px-5 py-4">Tình trạng tái khám</th>
                             <th className="px-5 py-4 text-right">Thao tác</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-blue-50 bg-white">
-                        {records.length === 0 ? (
+                        {patientFiles.length === 0 ? (
                             <tr>
                                 <td colSpan="6" className="px-5 py-10 text-center text-sm font-bold text-slate-500">
                                     Chưa có hồ sơ khám phù hợp.
                                 </td>
                             </tr>
-                        ) : records.map((record) => (
-                            <tr key={record.id} className="hover:bg-blue-50/40">
+                        ) : patientFiles.map((file) => (
+                            <tr key={file.patientId} className="hover:bg-blue-50/40">
                                 <td className="px-5 py-4">
-                                    <p className="font-black text-blue-950">{record.patientName || `Bệnh nhân #${record.patientId}`}</p>
-                                    <p className="mt-1 text-xs font-semibold text-slate-500">{record.patientPhone || record.patientEmail || '-'}</p>
+                                    <p className="font-black text-blue-950">{file.patientName}</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">{file.patientPhone || file.patientEmail || '-'}</p>
+                                    <p className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                                        {file.visitCount} lần khám
+                                    </p>
                                 </td>
-                                <td className="px-5 py-4 text-sm font-bold text-slate-600">{formatDateTime(record.appointmentDate, record.appointmentTime)}</td>
-                                <td className="px-5 py-4 text-sm font-bold text-slate-600">{record.dentistName || '-'}</td>
+                                <td className="px-5 py-4 text-sm font-bold text-slate-600">
+                                    {file.latestRecord ? formatDateTime(file.latestRecord.appointmentDate, file.latestRecord.appointmentTime) : '-'}
+                                </td>
+                                <td className="px-5 py-4 text-sm font-bold text-slate-600">{file.latestRecord?.dentistName || '-'}</td>
                                 <td className="max-w-xs px-5 py-4">
-                                    <p className="line-clamp-2 text-sm font-bold text-blue-950">{record.diagnosis}</p>
-                                    {record.serviceNames && <p className="mt-1 line-clamp-1 text-xs text-slate-500">{record.serviceNames}</p>}
+                                    <p className="line-clamp-2 text-sm font-bold text-blue-950">{file.latestRecord?.diagnosis || '-'}</p>
+                                    {file.latestRecord?.serviceNames && <p className="mt-1 line-clamp-1 text-xs text-slate-500">{file.latestRecord.serviceNames}</p>}
                                 </td>
                                 <td className="px-5 py-4">
-                                    <FollowUpBadge record={record} />
+                                    <PatientFollowUpBadge file={file} />
                                 </td>
                                 <td className="px-5 py-4 text-right">
                                     <button
                                         type="button"
-                                        onClick={() => setSelectedRecord(record)}
+                                        onClick={() => setSelectedPatientFile(file)}
                                         className="rounded-xl bg-blue-50 px-4 py-2 text-xs font-black text-blue-700 hover:bg-blue-100"
                                     >
-                                        Chi tiết
+                                        Mở bệnh án
                                     </button>
                                 </td>
                             </tr>
@@ -163,6 +216,14 @@ export default function RecordsTab() {
                     </tbody>
                 </table>
             </div>
+
+            {selectedPatientFile && (
+                <PatientRecordFileModal
+                    patientFile={selectedPatientFile}
+                    onClose={() => setSelectedPatientFile(null)}
+                    onOpenRecord={setSelectedRecord}
+                />
+            )}
 
             {selectedRecord && (
                 <RecordDetailModal record={selectedRecord} onClose={() => setSelectedRecord(null)} />
@@ -195,6 +256,31 @@ function Summary({ label, value, tone = 'slate' }) {
     );
 }
 
+function PatientFollowUpBadge({ file }) {
+    if (file.dueFollowUps.length > 0) {
+        const latestDue = file.dueFollowUps[0];
+        return (
+            <div className="space-y-1">
+                <span className="inline-flex rounded-full bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">
+                    Đến hạn · {formatDate(latestDue.nextAppointmentDate)}
+                </span>
+                <p className="text-xs font-bold text-slate-500">{file.dueFollowUps.length} lịch cần nhắc</p>
+            </div>
+        );
+    }
+
+    if (file.upcomingFollowUps.length > 0) {
+        const nextFollowUp = [...file.upcomingFollowUps].sort((a, b) => String(a.nextAppointmentDate).localeCompare(String(b.nextAppointmentDate)))[0];
+        return (
+            <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                Sắp tới · {formatDate(nextFollowUp.nextAppointmentDate)}
+            </span>
+        );
+    }
+
+    return <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">Không hẹn</span>;
+}
+
 function FollowUpBadge({ record }) {
     if (!record.nextAppointmentDate) {
         return <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">Không hẹn</span>;
@@ -214,6 +300,59 @@ function FollowUpBadge({ record }) {
     );
 }
 
+function PatientRecordFileModal({ patientFile, onClose, onOpenRecord }) {
+    return (
+        <div className="fixed inset-0 z-[65] overflow-y-auto bg-slate-900/40 p-4">
+            <div className="mx-auto my-8 max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-[#F8FCFC] px-6 py-5">
+                    <div>
+                        <p className="text-sm font-black uppercase text-blue-700">Bệnh án #{patientFile.patientId}</p>
+                        <h3 className="mt-1 text-2xl font-black text-blue-950">{patientFile.patientName}</h3>
+                        <p className="mt-2 text-sm font-semibold text-slate-500">
+                            {patientFile.patientPhone || patientFile.patientEmail || 'Chưa có thông tin liên hệ'} · {patientFile.visitCount} lần khám
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-white text-xl font-black text-slate-500 hover:bg-blue-50">×</button>
+                </div>
+
+                <div className="grid gap-3 border-b border-blue-100 p-5 md:grid-cols-3">
+                    <Summary label="Tổng lần khám" value={patientFile.visitCount} />
+                    <Summary label="Tái khám đến hạn" value={patientFile.dueFollowUps.length} tone="rose" />
+                    <Summary label="Tái khám sắp tới" value={patientFile.upcomingFollowUps.length} tone="blue" />
+                </div>
+
+                <div className="p-6">
+                    <h4 className="font-black text-blue-950">Lịch sử khám theo thời gian</h4>
+                    <div className="mt-4 space-y-3">
+                        {patientFile.visits.map((record) => (
+                            <article key={record.id} className="rounded-2xl border border-blue-100 bg-white p-4">
+                                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-black uppercase text-slate-400">Lần khám #{record.id} · Lịch #{record.appointmentId}</p>
+                                        <h5 className="mt-1 font-black text-blue-950">{formatDateTime(record.appointmentDate, record.appointmentTime)}</h5>
+                                        <p className="mt-1 text-sm font-semibold text-slate-500">{record.dentistName || 'Bác sĩ phụ trách'} · {record.serviceNames || 'Chưa có dịch vụ'}</p>
+                                        <p className="mt-3 line-clamp-2 text-sm font-bold leading-6 text-slate-700">{record.diagnosis}</p>
+                                    </div>
+                                    <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
+                                        <FollowUpBadge record={record} />
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenRecord(record)}
+                                            className="rounded-xl bg-blue-50 px-4 py-2 text-xs font-black text-blue-700 hover:bg-blue-100"
+                                        >
+                                            Xem lần khám
+                                        </button>
+                                    </div>
+                                </div>
+                            </article>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function RecordDetailModal({ record, onClose }) {
     const toothPositions = parseList(record.toothPositions);
     const sessions = parseList(record.treatmentSessions);
@@ -224,7 +363,7 @@ function RecordDetailModal({ record, onClose }) {
             <div className="mx-auto my-8 max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
                 <div className="flex items-start justify-between gap-4 border-b border-blue-100 bg-[#F8FCFC] px-6 py-5">
                     <div>
-                        <p className="text-sm font-black uppercase text-blue-700">Hồ sơ khám #{record.id}</p>
+                        <p className="text-sm font-black uppercase text-blue-700">Lần khám #{record.id}</p>
                         <h3 className="mt-1 text-2xl font-black text-blue-950">{record.patientName || `Bệnh nhân #${record.patientId}`}</h3>
                         <p className="mt-2 text-sm font-semibold text-slate-500">
                             {formatDateTime(record.appointmentDate, record.appointmentTime)} · {record.dentistName || 'Bác sĩ phụ trách'}

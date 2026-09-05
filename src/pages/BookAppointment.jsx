@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { AuthContext } from '../context/auth-context';
@@ -71,6 +71,11 @@ export default function BookAppointment() {
     const [loadingDentistAvailability, setLoadingDentistAvailability] = useState(false);
     const [dentistAvailability, setDentistAvailability] = useState({});
     const [submitting, setSubmitting] = useState(false);
+    const errorRef = useRef(null);
+    const serviceRef = useRef(null);
+    const dateRef = useRef(null);
+    const dentistRef = useRef(null);
+    const timeRef = useRef(null);
 
     const today = useMemo(() => getTodayValue(), []);
     const dateOptions = useMemo(() => buildDateOptions(), []);
@@ -261,19 +266,30 @@ export default function BookAppointment() {
         });
     };
 
+    const notifyFormError = (message, targetRef = errorRef) => {
+        setError(message);
+        toast.error(message, { id: 'booking-form-error' });
+        window.requestAnimationFrame(() => {
+            (targetRef.current || errorRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    };
+
     const handleSubmit = async (event) => {
         event.preventDefault();
         setError('');
 
-        if (!dentistId) return setError('Vui lòng chọn bác sĩ.');
-        if (!date || !time) return setError('Vui lòng chọn ngày và khung giờ khám.');
-        if (selectedServices.length === 0) return setError('Vui lòng chọn ít nhất một dịch vụ.');
-        if (selectedServices.length > MAX_SERVICES_PER_APPOINTMENT) return setError(`Mỗi lịch hẹn chỉ được chọn tối đa ${MAX_SERVICES_PER_APPOINTMENT} dịch vụ.`);
-        if (totalDuration > MAX_APPOINTMENT_DURATION_MINUTES) return setError(`Tổng thời lượng không nên vượt ${MAX_APPOINTMENT_DURATION_MINUTES} phút cho một lịch hẹn.`);
+        if (selectedServices.length === 0) return notifyFormError('Vui lòng chọn ít nhất một dịch vụ trước khi đặt lịch.', serviceRef);
+        if (!date) return notifyFormError('Vui lòng chọn ngày khám theo định dạng của hệ thống.', dateRef);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return notifyFormError('Ngày khám không đúng định dạng YYYY-MM-DD. Vui lòng chọn lại ngày trên giao diện.', dateRef);
+        if (!dentistId) return notifyFormError('Vui lòng chọn bác sĩ dự kiến.', dentistRef);
+        if (!time) return notifyFormError('Vui lòng chọn khung giờ khám còn trống.', timeRef);
+        if (!/^\d{2}:\d{2}$/.test(time)) return notifyFormError('Giờ khám không đúng định dạng HH:mm. Vui lòng chọn lại khung giờ trên giao diện.', timeRef);
+        if (selectedServices.length > MAX_SERVICES_PER_APPOINTMENT) return notifyFormError(`Mỗi lịch hẹn chỉ được chọn tối đa ${MAX_SERVICES_PER_APPOINTMENT} dịch vụ.`, serviceRef);
+        if (totalDuration > MAX_APPOINTMENT_DURATION_MINUTES) return notifyFormError(`Tổng thời lượng không nên vượt ${MAX_APPOINTMENT_DURATION_MINUTES} phút cho một lịch hẹn.`, serviceRef);
 
         setSubmitting(true);
         try {
-            await api.post('/appointments', {
+            const res = await api.post('/appointments', {
                 dentistId: Number(dentistId),
                 appointmentDate: date,
                 appointmentTime: `${time}:00`,
@@ -281,24 +297,24 @@ export default function BookAppointment() {
                 serviceIds: selectedServices
             });
 
-            toast.success('Đặt lịch thành công. Nhân viên phòng khám sẽ xác nhận lịch hẹn của bạn.');
+            toast.success(res.data?.message || 'Đặt lịch thành công. Bác sĩ bạn chọn chỉ là dự kiến, lễ tân sẽ xác nhận lịch hẹn của bạn.');
             setDate('');
             setTime('');
             setNotes('');
             setSelectedServices([]);
             setSlots([]);
         } catch (err) {
-            setError(err.response?.data?.message || 'Không thể đặt lịch. Vui lòng thử lại.');
+            notifyFormError(err.response?.data?.message || 'Không thể đặt lịch. Vui lòng thử lại.');
         } finally {
             setSubmitting(false);
         }
     };
 
     const steps = [
-        { label: 'Ngày', ready: Boolean(date) },
-        { label: 'Dịch vụ', ready: selectedServices.length > 0 },
-        { label: 'Bác sĩ', ready: Boolean(dentistId) },
-        { label: 'Giờ khám', ready: Boolean(time) }
+        { label: 'Ngày *', ready: Boolean(date) },
+        { label: 'Dịch vụ *', ready: selectedServices.length > 0 },
+        { label: 'Bác sĩ *', ready: Boolean(dentistId) },
+        { label: 'Giờ khám *', ready: Boolean(time) }
     ];
 
     if (authLoading) {
@@ -323,7 +339,7 @@ export default function BookAppointment() {
                             <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">Phenikaa Dental</p>
                             <h1 className="mt-2 text-3xl font-black leading-tight text-slate-900 sm:text-4xl">Đặt lịch khám nha khoa</h1>
                             <p className="mt-3 max-w-2xl text-sm font-semibold leading-7 text-slate-500">
-                                Chọn dịch vụ, bác sĩ và khung giờ phù hợp. Lễ tân sẽ xác nhận lịch trước khi bạn đến phòng khám.
+                                Chọn dịch vụ, bác sĩ dự kiến và khung giờ phù hợp. Lễ tân sẽ xác nhận lịch và có thể điều phối lại bác sĩ nếu phát sinh bận đột xuất.
                             </p>
                         </div>
 
@@ -347,15 +363,15 @@ export default function BookAppointment() {
             <section className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
                 <form onSubmit={handleSubmit} className="space-y-5">
                     {error && (
-                        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700">
+                        <div ref={errorRef} role="alert" className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700">
                             {error}
                         </div>
                     )}
 
-                    <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
+                    <section ref={dateRef} className="scroll-mt-24 rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                             <div>
-                                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Ngày khám</p>
+                                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Ngày khám <span className="text-rose-500">*</span></p>
                                 <h2 className="mt-1 text-xl font-black text-slate-900">Chọn ngày như chọn suất</h2>
                             </div>
                             <label className="block sm:w-56">
@@ -390,10 +406,10 @@ export default function BookAppointment() {
                         </div>
                     </section>
 
-                    <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
+                    <section ref={serviceRef} className="scroll-mt-24 rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                             <div>
-                                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Dịch vụ</p>
+                                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Dịch vụ <span className="text-rose-500">*</span></p>
                                 <h2 className="mt-1 text-xl font-black text-slate-900">Bạn cần khám gì hôm nay?</h2>
                             </div>
                             <Link to="/services" className="text-sm font-black text-blue-700 hover:text-blue-800">Xem bảng dịch vụ</Link>
@@ -498,10 +514,10 @@ export default function BookAppointment() {
                         </div>
                     </section>
 
-                    <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
+                    <section ref={dentistRef} className="scroll-mt-24 rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                             <div>
-                                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Bác sĩ</p>
+                                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Bác sĩ dự kiến <span className="text-rose-500">*</span></p>
                                 <h2 className="mt-1 text-xl font-black text-slate-900">Bác sĩ phù hợp với ngày đã chọn</h2>
                             </div>
                             {loadingDentistAvailability && (
@@ -565,13 +581,18 @@ export default function BookAppointment() {
                                 </div>
                             )}
                         </div>
+                        {selectedDentist && (
+                            <p className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-700">
+                                Bạn đang chọn {selectedDentist.fullName} làm bác sĩ dự kiến. Lịch hẹn chỉ được chốt sau khi lễ tân xác nhận; phòng khám có thể đổi bác sĩ phụ trách nếu bác sĩ bận đột xuất.
+                            </p>
+                        )}
                     </section>
 
-                    <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
+                    <section ref={timeRef} className="scroll-mt-24 rounded-2xl border border-blue-100 bg-white p-5 shadow-md">
                         <div>
                             <div className="flex items-center justify-between gap-3">
                                 <div>
-                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Khung giờ</p>
+                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Khung giờ <span className="text-rose-500">*</span></p>
                                     <h2 className="mt-1 text-xl font-black text-slate-900">Chọn suất khám còn trống</h2>
                                     <p className="mt-1 text-sm font-semibold text-slate-500">
                                         {date && selectedDentist
@@ -658,7 +679,7 @@ export default function BookAppointment() {
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="rounded-2xl bg-slate-50 p-4">
-                                    <p className="text-xs font-black uppercase text-slate-500">Bác sĩ</p>
+                                    <p className="text-xs font-black uppercase text-slate-500">Bác sĩ dự kiến</p>
                                     <p className="mt-2 min-h-[44px] font-black text-slate-900">{selectedDentist?.fullName || 'Chưa chọn'}</p>
                                 </div>
                                 <div className="rounded-2xl bg-slate-50 p-4">
@@ -687,6 +708,11 @@ export default function BookAppointment() {
                         >
                             {submitting ? 'Đang gửi lịch hẹn...' : 'Gửi yêu cầu đặt lịch'}
                         </button>
+                        {selectedDentist && (
+                            <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-xs font-black leading-5 text-amber-700">
+                                Lưu ý: bác sĩ đã chọn là dự kiến, chưa phải phân công chính thức cho đến khi phòng khám xác nhận.
+                            </p>
+                        )}
                     </section>
 
                     <section className="rounded-2xl border border-blue-100 bg-blue-50 p-5">

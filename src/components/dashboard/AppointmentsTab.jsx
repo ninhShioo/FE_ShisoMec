@@ -226,6 +226,11 @@ export default function AppointmentsTab() {
         ));
     };
 
+    const getPendingDentistChangeRequest = (appointmentId) => changeRequests.find((request) => (
+        request.status === 'pending'
+        && Number(request.appointmentId) === Number(appointmentId)
+    ));
+
     const handleCreateAppointment = async (event) => {
         event.preventDefault();
         if (!createForm.patientId || !createForm.appointmentDate || !createForm.appointmentTime || createForm.serviceIds.length === 0) {
@@ -269,9 +274,17 @@ export default function AppointmentsTab() {
     };
 
     const handleReviewDentistChange = async (requestId, status) => {
+        const request = changeRequests.find(item => Number(item.id) === Number(requestId));
+        const actionText = status === 'approved' ? 'xác nhận đổi bác sĩ' : 'từ chối yêu cầu đổi bác sĩ';
+        const detailText = request
+            ? `\n\nLịch #${request.appointmentId}: ${request.oldDentistName || 'Chưa phân công'} -> ${request.newDentistName}`
+            : '';
+
+        if (!window.confirm(`Bạn muốn ${actionText}?${detailText}`)) return;
+
         try {
             await api.put(`/appointments/dentist-change-requests/${requestId}`, { status });
-            toast.success(status === 'approved' ? 'Đã duyệt đổi bác sĩ.' : 'Đã từ chối yêu cầu.');
+            toast.success(status === 'approved' ? 'Đã xác nhận đổi bác sĩ.' : 'Đã từ chối yêu cầu.');
             fetchData();
         } catch (err) {
             toast.error(err.response?.data?.message || 'Không thể xử lý yêu cầu đổi bác sĩ.');
@@ -287,6 +300,18 @@ export default function AppointmentsTab() {
 
         try {
             const appointment = appointments.find(item => item.id === appointmentId);
+            const pendingRequest = getPendingDentistChangeRequest(appointmentId);
+
+            if (pendingRequest) {
+                if (user.role === 'admin') {
+                    await handleReviewDentistChange(pendingRequest.id, 'approved');
+                    return;
+                }
+
+                toast('Lịch này đang có yêu cầu đổi bác sĩ chờ admin xác nhận.');
+                return;
+            }
+
             if (appointment && String(appointment.dentistId || '') === String(dentistId)) {
                 toast('Bác sĩ này đang là bác sĩ phụ trách hiện tại.');
                 return;
@@ -297,7 +322,7 @@ export default function AppointmentsTab() {
                 : '';
             if (appointment?.status === 'confirmed' && note === null) return;
             if (appointment?.status === 'confirmed' && !note.trim()) {
-                toast.error('Vui lòng nhập lý do để admin duyệt đổi bác sĩ.');
+                toast.error('Vui lòng nhập lý do để admin xác nhận đổi bác sĩ.');
                 return;
             }
 
@@ -553,7 +578,7 @@ export default function AppointmentsTab() {
             {user.role === 'admin' && changeRequests.some((request) => request.status === 'pending') && (
                 <section className="m-6 rounded-2xl border border-amber-100 bg-amber-50/70 p-5">
                     <div className="mb-4">
-                        <p className="text-sm font-black uppercase text-amber-700">Chờ admin duyệt</p>
+                        <p className="text-sm font-black uppercase text-amber-700">Chờ admin xác nhận</p>
                         <h3 className="mt-1 text-lg font-black text-blue-950">Yêu cầu đổi bác sĩ từ lễ tân</h3>
                     </div>
                     <div className="grid gap-3">
@@ -574,7 +599,7 @@ export default function AppointmentsTab() {
                                     </div>
                                     <div className="flex gap-2">
                                         <button type="button" onClick={() => handleReviewDentistChange(request.id, 'approved')} className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
-                                            Duyệt
+                                            Xác nhận đổi
                                         </button>
                                         <button type="button" onClick={() => handleReviewDentistChange(request.id, 'rejected')} className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black text-slate-600 hover:bg-slate-200">
                                             Từ chối
@@ -655,6 +680,7 @@ export default function AppointmentsTab() {
                             <tr><td colSpan={appointmentTableColumns} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">Chưa có lịch hẹn.</td></tr>
                         ) : appointments.map(appointment => {
                             const [statusLabel, statusClass] = getStatusMeta(appointment.status);
+                            const pendingDentistChangeRequest = getPendingDentistChangeRequest(appointment.id);
                             return (
                                 <tr
                                     key={appointment.id}
@@ -684,6 +710,11 @@ export default function AppointmentsTab() {
                                                 {appointment.dentistName && appointment.preferredDentistName && appointment.dentistName !== appointment.preferredDentistName && (
                                                     <p className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">
                                                         Phụ trách hiện tại: {appointment.dentistName}
+                                                    </p>
+                                                )}
+                                                {pendingDentistChangeRequest && (
+                                                    <p className="rounded-lg bg-violet-50 px-2 py-1 text-xs font-black text-violet-700">
+                                                        Chờ xác nhận đổi: {pendingDentistChangeRequest.newDentistName}
                                                     </p>
                                                 )}
                                                 {['pending', 'confirmed'].includes(appointment.status) ? (
@@ -728,7 +759,18 @@ export default function AppointmentsTab() {
                                                 </>
                                             )}
                                             {isFrontDesk && appointment.status === 'confirmed' && (
+                                                pendingDentistChangeRequest ? (
+                                                    user.role === 'admin' ? (
+                                                        <IconAction label="Xác nhận đổi" icon="userCheck" tone="emerald" onClick={() => handleReviewDentistChange(pendingDentistChangeRequest.id, 'approved')} />
+                                                    ) : (
+                                                        <span className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-xl border border-violet-100 bg-violet-50 px-3 text-xs font-black text-violet-700">
+                                                            <Icon name="userCog" className="h-4 w-4" />
+                                                            Chờ xác nhận
+                                                        </span>
+                                                    )
+                                                ) : (
                                                     <IconAction label="Đổi bác sĩ" icon="userCog" tone="blue" onClick={() => handleAssignOnly(appointment.id)} />
+                                                )
                                             )}
                                             {isDentist && ['arrived', 'in_progress'].includes(appointment.status) && (
                                                 <IconAction label="Ghi hồ sơ" icon="fileText" tone="emerald" onClick={() => openRecordForm(appointment)} />
@@ -1285,7 +1327,7 @@ function AppointmentDetailModal({
                     <aside className="space-y-4">
                         {isAdmin && pendingDentistChangeRequest && (
                             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                                <p className="text-xs font-black uppercase text-amber-700">Đang chờ duyệt</p>
+                                <p className="text-xs font-black uppercase text-amber-700">Đang chờ xác nhận</p>
                                 <h4 className="mt-1 font-black text-blue-950">Yêu cầu đổi bác sĩ phụ trách</h4>
                                 <div className="mt-4 space-y-3 text-sm">
                                     <MetaRow label="Bác sĩ cũ" value={pendingDentistChangeRequest.oldDentistName || 'Chưa phân công'} />
@@ -1303,7 +1345,7 @@ function AppointmentDetailModal({
                                         onClick={() => onReviewDentistChange?.(pendingDentistChangeRequest.id, 'approved')}
                                         className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700"
                                     >
-                                        Duyệt
+                                        Xác nhận đổi
                                     </button>
                                     <button
                                         type="button"

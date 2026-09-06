@@ -37,6 +37,7 @@ export default function Profile() {
     const { user, loading: authLoading, refreshUser } = useContext(AuthContext);
     const navigate = useNavigate();
     const location = useLocation();
+    const isPatientProfile = user?.role === 'patient';
     const [appointments, setAppointments] = useState([]);
     const [records, setRecords] = useState([]);
     const [invoices, setInvoices] = useState([]);
@@ -141,25 +142,35 @@ export default function Profile() {
         const fetchData = async () => {
             try {
                 setLoading(true);
-                const [resAppointments, resRecords, resInvoices, resReviews] = await Promise.all([
+                const [resAppointments, resRecords, resInvoices] = await Promise.all([
                     api.get('/appointments'),
                     api.get(`/records/patient/${user.id}`),
-                    api.get('/invoices'),
-                    api.get('/reviews/my')
+                    api.get('/invoices')
                 ]);
                 setAppointments(resAppointments.data.data || []);
                 setRecords(resRecords.data.data || []);
                 setInvoices(resInvoices.data.data || []);
-                setReviews(resReviews.data.data || []);
             } catch {
                 toast.error('Không thể tải thông tin cá nhân.');
             } finally {
                 setLoading(false);
             }
+
+            if (!isPatientProfile) {
+                setReviews([]);
+                return;
+            }
+
+            try {
+                const resReviews = await api.get('/reviews/my');
+                setReviews(resReviews.data.data || []);
+            } catch {
+                setReviews([]);
+            }
         };
 
         fetchData();
-    }, [user]);
+    }, [user, isPatientProfile]);
 
     const getStatusText = (status) => ({
         arrived: 'Khách đã đến',
@@ -275,6 +286,11 @@ export default function Profile() {
     };
 
     const submitReview = async (appointmentId) => {
+        if (!isPatientProfile) {
+            toast.error('Chỉ tài khoản khách hàng mới gửi đánh giá.');
+            return;
+        }
+
         const form = reviewForms[appointmentId] || { rating: 5, comment: '' };
         try {
             await api.post('/reviews', {
@@ -460,16 +476,16 @@ export default function Profile() {
                                                     <td className="px-4 py-4 text-sm text-slate-600">{appointment.dentistName || 'Chưa phân công'}</td>
                                                     <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black ${getStatusClass(appointment.status)}`}>{getStatusText(appointment.status)}</span></td>
                                                     <td className="px-4 py-4 text-right">
-                                                        {['pending', 'confirmed'].includes(appointment.status) ? (
+                                                        {isPatientProfile && ['pending', 'confirmed'].includes(appointment.status) ? (
                                                             <button onClick={() => handleCancelAppointment(appointment.id)} className="rounded-full bg-rose-50 px-3 py-1.5 text-sm font-black text-rose-600 hover:bg-rose-100">Hủy lịch</button>
-                                                        ) : appointment.status === 'completed' && !reviewedAppointmentIds.has(appointment.id) ? (
+                                                        ) : isPatientProfile && appointment.status === 'completed' && !reviewedAppointmentIds.has(appointment.id) ? (
                                                             <button onClick={() => handleReviewChange(appointment.id, 'open', true)} className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-black text-amber-700 hover:bg-amber-100">Đánh giá</button>
-                                                        ) : appointment.status === 'completed' ? (
+                                                        ) : isPatientProfile && appointment.status === 'completed' ? (
                                                             <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">Đã đánh giá</span>
                                                         ) : <span className="text-slate-300">-</span>}
                                                     </td>
                                                 </tr>
-                                                {reviewForms[appointment.id]?.open && !reviewedAppointmentIds.has(appointment.id) && (
+                                                {isPatientProfile && reviewForms[appointment.id]?.open && !reviewedAppointmentIds.has(appointment.id) && (
                                                     <tr>
                                                         <td colSpan="5" className="bg-amber-50/40 px-4 py-4">
                                                             <div className="grid gap-3 md:grid-cols-[140px_1fr_auto]">
